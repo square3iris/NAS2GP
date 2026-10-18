@@ -71,6 +71,15 @@
 - **関連 i18n キー (v1.11.2)**: `ui.screen.*` (8 キー) を `lang/ja.py` と `lang/en.py` に 追加 し 、 `ui.scroll.unknown_recovery1/2` に `{screen}` を 追加。 未使用 と なっ た `log.gp.wait_reason` を 削除。
 - **バージョン更新 (v1.11.2)**: `settings.APP_VERSION` を `1.11.1` → `1.11.2` に 変更。
 
+### v1.11.3 — 端末削除 の 対象 拡張 と 実在 確認 (不整合 の 解消)
+
+- **「転送 ファイル のみ 削除」 の 対象 拡張 (v1.11.3)**: 従来 は `google_photos_state='DONE'` (Google Photos バックアップ 完了 済み) **かつ** 未 削除 の ファイル のみ を 対象 と し て い た ため 、 バックアップ 未 完了 の 転送 済み ファイル が 残り 、 「削除 し て も 空き 容量 が 増え ない」 状態 に なっ て い た。 対象 を `phone_transfer_state='DONE'` (NAS2GP が 端末 へ 転送 済み) かつ 未 削除 の 全 ファイル に 拡張 し 、 Google Photos の 完了 有無 に よら ず 端末 から 削除 する (原本 は PC / NAS に 残る)。 新 メソッド `Database.get_phone_transferred_files()` を 追加。
+- **事前 確認 API と 警告 (v1.11.3)**: `GET /api/device/delete_uploaded/preview` を 追加 し 、 対象 件数 を 「Google Photos 完了 済み」 と 「未 完了」 に 分け て 返す。 Web UI は 削除 前 に この 件数 を 確認 ダイアログ に 表示 し 、 未 完了 分 が 端末 から 消える (原本 は PC / NAS に 残る) 旨 を 明示 する。
+- **実在 確認 つき 削除 (v1.11.3)**: `Device.delete_file()` を 三値 返却 (存在 し て 削除 / 存在 せず / 失敗) に 変更。 `rm -f` は 存在 し ない ファイル でも 終了 コード 0 を 返す ため 、 従来 は 存在 し ない ファイル を 「削除 成功」 と 誤 判定 し 、 DB を 誤っ て `DONE` に 整合 さ せる 経路 が あっ た。 実在 確認 と 削除 を 1 回 の shell で 行い 、 マーカー 文字列 で 結果 を 判別 する。 まとめ 削除 用 に `Device.delete_files_detailed()` を 追加 (チャンク 単位・実在 確認 つき)。
+- **DB 整合 の 是正 (v1.11.3)**: `Database.mark_all_phone_delete_pending_done()` の 条件 を `phone_transfer_state='DONE'` に 変更 し 、 `Database.get_phone_delete_summary()` を 追加。 Web UI の 削除 結果 に 「端末 に 無し (削除 済み 扱い)」 件数 を 表示。
+- **関連 i18n キー (v1.11.3)**: `web.device.del.not_found` / `web.device.confirm_uploaded_detail` / `web.device.uploaded_none` を `lang/ja.py` と `lang/en.py` に 追加 (`web.device.uploaded_note` も 対象 拡張 に 合わせ 更新)。
+- **バージョン更新 (v1.11.3)**: `settings.APP_VERSION` を `1.11.2` → `1.11.3` に 変更。
+
 ### v1.9.0 — macOS / Linux 対応 (ベストエフォート)
 
 - **macOS / Linux 対応 (v1.9.0)**: これ まで Windows 専用 だっ た 構成 を macOS / Linux で も 起動 ・ 実行 でき る よう に し た (ベストエフォート)。実機 の macOS で の 動作 確認 は 未 実施。

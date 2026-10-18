@@ -506,6 +506,64 @@ class Database(
         except Exception:
             return []
 
+    def get_phone_transferred_files(self, limit=None):
+        """v1.11.3 Web UI 「NAS2GP が 転送 し た ファイル のみ 削除」 用:
+        NAS2GP が 端末 へ 転送 済み (phone_transfer_state='DONE') で 、 まだ 端末 から
+        削除 さ れ て い ない (phone_delete_state != 'DONE') ファイル 一覧 を 返す。
+        Google Photos の バックアップ 完了 (google_photos_state='DONE') は 条件 に
+        含め ない 。 作業 フォルダ は NAS2GP 専用 (DCIM 配下 のみ 選択 可) の ため 、
+        転送 済み ファイル を 消し て も 個人 の 写真 は 巻き込ま ず 、 原本 は NAS 側 に
+        残る 。
+
+        v1.11.3: for the Web UI "delete NAS2GP-transferred files" button. Returns
+        files already transferred to the device but not yet deleted, WITHOUT requiring
+        google_photos_state='DONE'. The working folder is dedicated to NAS2GP (only
+        DCIM subfolders are selectable), so personal photos are never touched and the
+        originals remain on the NAS.
+        """
+        base_sql = """
+        SELECT path, filename
+        FROM files
+        WHERE phone_transfer_state = 'DONE'
+          AND COALESCE(phone_delete_state, 'PENDING') IN ('PENDING', 'FAILED')
+        ORDER BY id ASC
+        """
+        if limit and int(limit) > 0:
+            base_sql += f" LIMIT {int(limit)}"
+        try:
+            self.cursor.execute(base_sql)
+            rows = self.cursor.fetchall() or []
+            return [(r["path"], r["filename"]) for r in rows]
+        except Exception:
+            return []
+
+    def get_phone_delete_summary(self):
+        """v1.11.3 Web UI の 削除 前 確認 表示 用 サマリ 。
+        get_phone_transferred_files() の 対象 を 「Google Photos 完了 済み」 と
+        「未 完了」 に 分け た 件数 を 返す 。 戻り値: {"total","gp_done","gp_pending"}
+
+        v1.11.3: summary for the pre-delete confirmation. Splits the
+        get_phone_transferred_files() target into GP-done vs GP-unfinished counts.
+        """
+        out = {"total": 0, "gp_done": 0, "gp_pending": 0}
+        try:
+            self.cursor.execute("""
+            SELECT
+              COALESCE(SUM(CASE WHEN google_photos_state = 'DONE' THEN 1 ELSE 0 END), 0) AS gp_done,
+              COALESCE(SUM(CASE WHEN COALESCE(google_photos_state, '') <> 'DONE' THEN 1 ELSE 0 END), 0) AS gp_pending
+            FROM files
+            WHERE phone_transfer_state = 'DONE'
+              AND COALESCE(phone_delete_state, 'PENDING') IN ('PENDING', 'FAILED')
+            """)
+            row = self.cursor.fetchone()
+            if row is not None:
+                out["gp_done"] = int(row["gp_done"] or 0)
+                out["gp_pending"] = int(row["gp_pending"] or 0)
+                out["total"] = out["gp_done"] + out["gp_pending"]
+        except Exception:
+            pass
+        return out
+
     def mark_phone_delete_done_bulk(self, paths_list):
         """Pre-1 GC 削除 成功 後 の phone_delete_state 一括 'DONE' 更新。
 
@@ -529,22 +587,30 @@ class Database(
         return updated
 
     def mark_all_phone_delete_pending_done(self):
-        """DCIM フォルダ 全体 削除 など で 端末 上 の アップロード 済み ファイル が
-        一括 消滅 し た 場合 に 、 削除 待ち (PENDING/FAILED) の 全 行 を DONE に 整合 さ せる。
-        これ を 行わ ない と DB 上 に 削除 待ち 情報 が 残留 し 、 次回 Pre-1 GC が
-        既に 存在 し ない ファイル を 再試行 し 続け る (空振り)。
+        """DCIM フォルダ 全体 削除 など で 端末 上 の 転送 済み ファイル が 一括 消滅
+        し た 場合 に 、 削除 待ち (PENDING/FAILED) の 全 行 を DONE に 整合 さ せる 。
+        これ を 行わ ない と DB 上 に 削除 待ち 情報 が 残留 し 、 次回 Pre-1 GC や
+        手動 削除 が 既に 存在 し ない ファイル を 再試行 し 続け る (空振り)。
         戻り値: 更新 し た 行数。
 
-        When uploaded device files disappear in bulk (e.g. whole-DCIM deletion),
+        v1.11.3: 対象 条件 を google_photos_state='DONE' から
+        phone_transfer_state='DONE' へ 広げ た 。作業 フォルダ は DCIM 配下 のみ
+        (サーバー 側 で 制限) な ため 、 DCIM 全削除 で 実 ファイル が 消え た 行 は
+        Google Photos の 完了 / 未 完了 に 関 わら ず DONE に 整合 さ せる の が 正しい 。
+
+        When transferred device files disappear in bulk (e.g. whole-DCIM deletion),
         reconcile all pending/failed deletions to DONE. Otherwise stale pending
-        entries remain and the next Pre-1 GC keeps retrying non-existent files.
-        Returns: number of updated rows.
+        entries remain and the next Pre-1 GC / manual delete keeps retrying
+        non-existent files. v1.11.3: the condition was widened from
+        google_photos_state='DONE' to phone_transfer_state='DONE' because the working
+        folder is restricted to DCIM subfolders, so a whole-DCIM wipe removes those
+        files regardless of the Google Photos state.
         """
         try:
             self.cursor.execute("""
             UPDATE files
             SET phone_delete_state='DONE', updated_at=CURRENT_TIMESTAMP
-            WHERE google_photos_state='DONE'
+            WHERE phone_transfer_state='DONE'
               AND COALESCE(phone_delete_state, 'PENDING') IN ('PENDING', 'FAILED')
             """)
             return int(self.cursor.rowcount or 0)

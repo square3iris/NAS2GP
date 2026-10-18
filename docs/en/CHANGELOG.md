@@ -72,6 +72,15 @@ removed desktop-GUI era is compressed).
 - **Related i18n keys (v1.11.2)**: added `ui.screen.*` (8 keys) to `lang/ja.py` and `lang/en.py`, and added `{screen}` to `ui.scroll.unknown_recovery1/2`. Removed the now-unused `log.gp.wait_reason`.
 - **Version bump (v1.11.2)**: `settings.APP_VERSION` changed from `1.11.1` to `1.11.2`.
 
+### v1.11.3 — Widened device-deletion scope and existence check (fixing the mismatch)
+
+- **Widened "delete only transferred files" scope (v1.11.3)**: previously only files with `google_photos_state='DONE'` (backup to Google Photos finished) **and** not yet deleted were targeted, so transferred files whose backup was unfinished remained on the device and "deleting" did not free space. The scope is now every file with `phone_transfer_state='DONE'` (transferred to the device by NAS2GP) that is not yet deleted, regardless of Google Photos state; the originals remain on the PC / NAS. Added `Database.get_phone_transferred_files()`.
+- **Preview API and warning (v1.11.3)**: added `GET /api/device/delete_uploaded/preview`, returning the target count split into "Google Photos done" and "unfinished". The Web UI shows these counts in the confirmation dialog before deleting, and makes clear that unfinished files are removed from the device (originals remain on the PC / NAS).
+- **Deletion with existence check (v1.11.3)**: `Device.delete_file()` now returns one of three results (removed / not present / failed). Because `rm -f` exits 0 even for missing files, the old code could falsely report "deleted" and reconcile the DB to `DONE` incorrectly. Existence check and deletion are now done in a single shell call, distinguished by marker strings. Added `Device.delete_files_detailed()` for bulk deletion (chunked, with existence check).
+- **DB reconciliation corrected (v1.11.3)**: changed the condition of `Database.mark_all_phone_delete_pending_done()` to `phone_transfer_state='DONE'` and added `Database.get_phone_delete_summary()`. The Web UI delete result now shows the "not on device (treated as deleted)" count.
+- **Related i18n keys (v1.11.3)**: added `web.device.del.not_found` / `web.device.confirm_uploaded_detail` / `web.device.uploaded_none` to `lang/ja.py` and `lang/en.py` (and updated `web.device.uploaded_note` to match the widened scope).
+- **Version bump (v1.11.3)**: `settings.APP_VERSION` changed from `1.11.2` to `1.11.3`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.

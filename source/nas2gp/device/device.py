@@ -448,11 +448,19 @@ class Device:
 
     def delete_file(self, filename):
         """
-        端末内のファイルを1件削除する
-        ファイル名に () スペース $ など の 特殊文字 が 含ま れ て い て も 安全 に 削除 でき る よう 、 shlex.quote で POSIX シェル クォート を 適用 する 。
+        端末内のファイルを1件削除する (v1.11.3: 実在確認つき)。
+        ファイル名に () スペース $ など の 特殊文字 が 含ま れ て い て も 安全 に 削除 でき る よう 、
+        shlex.quote で POSIX シェル クォート を 適用 する 。
 
-        Deletes a single file on the device. Applies POSIX shell quoting via shlex.quote
-        so filenames containing (), spaces, $ and other special characters are handled safely.
+        戻り値: True=実在 し て 削除 し た / False=削除 失敗 / None=端末 に 存在 し なかっ た 。
+        v1.11.3: 旧 実装 は rm -f のみ で 、 存在 し ない ファイル で も 終了 コード 0 の ため
+        「削除 成功」 と 誤 判定 し DB を 誤っ て DONE 化 する 経路 が あっ た 。 削除 前 に
+        [ -e ] で 実在 を 確認 し 、 存在 し なかっ た 場合 は None を 返す 。
+
+        Deletes a single file on the device (v1.11.3: with existence check). Applies POSIX
+        shell quoting via shlex.quote so filenames containing (), spaces, $ and other
+        special characters are handled safely. Returns True when the file existed and was
+        removed, False on failure, and None when the file was not present on the device.
         """
         try:
             if not self.ensure_adb_alive(aggressive=False, shell_probe=False, publish_unrecoverable=False):
@@ -461,7 +469,23 @@ class Device:
             pass
         raw_remote = f"{self.WORK_DIR}/{filename}"
         quoted_remote = _sh_quote(raw_remote)
-        return ADB.shell("sh", "-c", f"rm -f {quoted_remote}")
+        # v1.11.3: 実在 確認 と 削除 を 1 回 の shell で 行い 、 結果 を マーカー 文字列 で 受け取る 。
+        #   rm -f の 終了 コード だけ で は 「存在 し なかっ た」 を 区別 でき ない ため 。
+        script = (
+            f"if [ -e {quoted_remote} ]; then "
+            f"rm -f {quoted_remote} && echo NAS2GP_REMOVED || echo NAS2GP_FAILED; "
+            f"else echo NAS2GP_ABSENT; fi"
+        )
+        try:
+            out = ADB.shell_output("sh", "-c", script)
+        except Exception:
+            return False
+        s = str(out or "")
+        if "NAS2GP_REMOVED" in s:
+            return True
+        if "NAS2GP_ABSENT" in s:
+            return None
+        return False
 
     def delete_files(self, filenames):
         """
@@ -476,6 +500,68 @@ class Device:
             if self.delete_file(filename):
                 success += 1
         return success
+
+    def delete_files_detailed(self, filenames, chunk_size=100):
+        """v1.11.3: 複数 ファイル を chunk_size 件 ずつ まとめて 削除 し 、 実在 確認 つき の
+        結果 を 分類 して 返す (削除 / 存在 せず / 失敗)。
+
+        1 件 ずつ adb shell を 呼ぶ と 数千 件 の 削除 で UI が 長時間 ブロック する ため 、
+        1 回 の shell で 複数 ファイル を 処理 する 。 各 ファイル の 結果 は 出力 の
+        マーカー (R|削除 / A|存在せず / F|失敗) で 判別 する 。
+
+        戻り値: (removed, absent, failed) の 3 リスト (各 要素 は ファイル名)。
+
+        v1.11.3: Deletes files in chunks of chunk_size with an existence check and returns
+        the results classified into removed / absent / failed. Batching avoids one adb
+        shell per file, which would block the UI for a long time on thousands of files.
+        """
+        removed, absent, failed = [], [], []
+        names = [str(f) for f in (filenames or []) if f]
+        if not names:
+            return removed, absent, failed
+        try:
+            if not self.ensure_adb_alive(aggressive=False, shell_probe=False, publish_unrecoverable=False):
+                return removed, absent, list(names)
+        except Exception:
+            pass
+        work = str(self.WORK_DIR).rstrip("/")
+        try:
+            _chunk = max(1, int(chunk_size))
+        except Exception:
+            _chunk = 100
+        for i in range(0, len(names), _chunk):
+            chunk = names[i:i + _chunk]
+            parts = []
+            for fn in chunk:
+                q_path = _sh_quote(f"{work}/{fn}")
+                q_mark = _sh_quote("R|" + fn)
+                q_mark_a = _sh_quote("A|" + fn)
+                q_mark_f = _sh_quote("F|" + fn)
+                parts.append(
+                    f"if [ -e {q_path} ]; then "
+                    f"rm -f {q_path} && echo {q_mark} || echo {q_mark_f}; "
+                    f"else echo {q_mark_a}; fi"
+                )
+            script = "; ".join(parts)
+            try:
+                out = ADB.shell_output("sh", "-c", script) or ""
+            except Exception:
+                out = ""
+            marks = {}
+            for line in str(out).splitlines():
+                line = line.strip()
+                if len(line) > 2 and line[1] == "|":
+                    marks.setdefault(line[0], set()).add(line[2:])
+            _rem = marks.get("R", set())
+            _abs = marks.get("A", set())
+            for fn in chunk:
+                if fn in _rem:
+                    removed.append(fn)
+                elif fn in _abs:
+                    absent.append(fn)
+                else:
+                    failed.append(fn)
+        return removed, absent, failed
 
     # ============================================================
     # 端末側 ファイル 削除

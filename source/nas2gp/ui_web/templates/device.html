@@ -164,6 +164,7 @@ function _fmtDeleteResult(title, j){
   lines.push(j.ok === true ? t('web.device.del.ok') : t('web.device.del.ng'));
   lines.push(tf('web.device.del.targets', {targets: (targets.length ? targets.join(', ') : t('web.device.del.none'))}));
   lines.push(tf('web.device.del.result', {ok: j.ok_cnt||0, err: j.err_cnt||0, total: j.total||0}));
+  if (j.not_found_cnt) lines.push(tf('web.device.del.not_found', {n: j.not_found_cnt}));
   if (typeof j.free_gb_after === 'number') lines.push(tf('web.device.del.free_after', {gb: j.free_gb_after.toFixed(2)}));
   if (j.error) lines.push(tf('web.device.del.error', {err: j.error}));
   if (Array.isArray(j.logs) && j.logs.length) {
@@ -175,7 +176,29 @@ function _fmtDeleteResult(title, j){
 }
 
 async function callDeleteUploaded(){
-  if (!confirm(t('web.device.confirm_uploaded'))) return;
+  _pxMsg('');
+  let pv = null;
+  try {
+    const r = await fetch('/api/device/delete_uploaded/preview');
+    if (r.status === 409) {
+      const j = await r.json();
+      _pxMsg(j.message || t('web.consent.required'), 'var(--err)');
+      return;
+    }
+    pv = await r.json();
+  } catch(e){ alert(tf('web.device.uploaded_fail', {err: e})); return; }
+  if (!pv || pv.ok !== true) {
+    alert(tf('web.device.uploaded_fail', {err: (pv && pv.error) || ''}));
+    return;
+  }
+  if (!pv.total) {
+    _pxMsg(t('web.device.uploaded_none'), 'var(--sub)');
+    return;
+  }
+  const msg = tf('web.device.confirm_uploaded_detail', {
+    total: pv.total, gp_done: pv.gp_done, gp_pending: pv.gp_pending
+  });
+  if (!confirm(msg)) return;
   try {
     const r = await fetch('/api/device/delete_uploaded', { method:'POST' });
     const j = await r.json();

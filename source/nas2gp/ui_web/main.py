@@ -1223,18 +1223,58 @@ def create_app() -> FastAPI:
             result["error"] = f"{type(e).__name__}: {e}"
         return result
 
-    @app.post("/api/device/delete_uploaded")
-    async def api_device_delete_uploaded():
-        """
-        NAS2GP が 端末 へ 転送 し た ファイル のみ を 削除 する (1件 ずつ rm -f)。
-        個人 の 写真 は 対象 に し ない 。
-        Deletes only the files NAS2GP transferred to the device (one-by-one rm -f).
-        Personal photos are never touched.
+    @app.get("/api/device/delete_uploaded/preview")
+    async def api_device_delete_uploaded_preview():
+        """v1.11.3: 「NAS2GP が 転送 し た ファイル のみ 削除」 の 事前 確認 用。
+        削除 対象 件数 を Google Photos 完了 済み / 未 完了 に 分け て 返す 。
+        未 完了 分 は Google Photos に アップロード さ れ ず に 端末 から 消える ため 、
+        Web UI で その 件数 を 確認 さ せる ため の API。
+
+        v1.11.3: preview for the "delete NAS2GP-transferred files" button; returns the
+        target count split into Google Photos done / unfinished, so the Web UI can warn
+        how many not-yet-uploaded files would be removed.
         """
         _blk = _consent_block()
         if _blk:
             return JSONResponse(status_code=409, content=_blk)
-        result = {"ok": False, "total": 0, "ok_cnt": 0, "err_cnt": 0, "targets": [], "logs": [], "error": None}
+        result = {"ok": False, "total": 0, "gp_done": 0, "gp_pending": 0, "error": None}
+        try:
+            from nas2gp.storage.db import Database as _DbP
+            _db = _DbP()
+            try:
+                _sum = _db.get_phone_delete_summary() or {}
+            finally:
+                try:
+                    _db.close()
+                except Exception:
+                    pass
+            result["total"] = int(_sum.get("total") or 0)
+            result["gp_done"] = int(_sum.get("gp_done") or 0)
+            result["gp_pending"] = int(_sum.get("gp_pending") or 0)
+            result["ok"] = True
+        except Exception as e:
+            result["error"] = f"{type(e).__name__}: {e}"
+        return result
+
+    @app.post("/api/device/delete_uploaded")
+    async def api_device_delete_uploaded():
+        """
+        v1.11.3: NAS2GP が 端末 へ 転送 し た ファイル (phone_transfer_state='DONE') で 、
+        まだ 端末 から 削除 さ れ て い ない もの を まとめて 削除 する 。 Google Photos の
+        バックアップ 完了 は 条件 に 含め ない (未 完了 分 も 端末 から 消える が 、 原本 は NAS に
+        残る)。 実在 確認 つき で 削除 し 、 実際 に 消せ た もの だけ DB を DONE に 整合 さ せる 。
+        個人 の 写真 (NAS2GP 管理 外) は 対象 に し ない 。
+
+        v1.11.3: Deletes every file NAS2GP transferred to the device
+        (phone_transfer_state='DONE') that has not been removed yet, regardless of
+        Google Photos backup state. Verifies existence, and reconciles to DONE only
+        the files actually removed. Personal photos outside NAS2GP are never touched.
+        """
+        _blk = _consent_block()
+        if _blk:
+            return JSONResponse(status_code=409, content=_blk)
+        result = {"ok": False, "total": 0, "ok_cnt": 0, "err_cnt": 0, "not_found_cnt": 0,
+                  "targets": [], "logs": [], "error": None}
         try:
             from nas2gp.device.device import Device as _Px2
             from nas2gp.core.logger import Logger as _Lg2
@@ -1242,14 +1282,18 @@ def create_app() -> FastAPI:
             px2 = _Px2()
             _db_q = _Db2()
             try:
-                _pending = list(_db_q.get_phone_pending_delete_files() or [])
+                _pending = list(_db_q.get_phone_transferred_files() or [])
             finally:
                 try:
                     _db_q.close()
                 except Exception:
                     pass
+            _paths_by_name = {}
+            for (_p, fn) in _pending:
+                if fn:
+                    _paths_by_name[fn] = _p
             targets = [fn for (_p, fn) in _pending if fn]
-            result["targets"] = targets
+            result["targets"] = targets[:10]
             result["total"] = len(targets)
             if not targets:
                 result["ok"] = True
@@ -1261,26 +1305,30 @@ def create_app() -> FastAPI:
                 result["logs"].append(f"ensure_adb_alive → {_ens}")
             except Exception as e_ensure:
                 result["logs"].append(f"ensure_adb_alive exception (続行): {e_ensure}")
-            ok_cnt = 0
-            err_cnt = 0
-            _ok_names = set()
-            for fn in targets:
-                try:
-                    if px2.delete_file(fn):
-                        ok_cnt += 1
-                        _ok_names.add(fn)
-                        result["logs"].append(f"削除: {fn}")
-                    else:
-                        err_cnt += 1
-                        result["logs"].append(f"失敗: {fn}")
-                except Exception as _e_inner:
-                    err_cnt += 1
-                    result["logs"].append(f"例外 [{fn}]: {_e_inner}")
-            # 実際 に 端末 から 消せ た もの だけ DB を DONE に 整合 さ せ る 。
-            # Reconcile to DONE only the files actually removed from the device.
+            # v1.11.3: 実在 確認 つき で 一括 削除 (削除 / 存在 せず / 失敗 に 分類)。
             try:
-                if _ok_names:
-                    _paths = [p for (p, fn) in _pending if fn in _ok_names]
+                _removed, _absent, _failed = px2.delete_files_detailed(targets)
+            except Exception as _e_bulk:
+                result["logs"].append(f"削除 例外: {_e_bulk}")
+                _removed, _absent, _failed = [], [], list(targets)
+            ok_cnt = len(_removed)
+            not_found_cnt = len(_absent)
+            err_cnt = len(_failed)
+            for fn in _removed:
+                result["logs"].append(f"削除: {fn}")
+            for fn in _absent:
+                result["logs"].append(f"存在 せず (削除 済み 扱い): {fn}")
+            for fn in _failed:
+                result["logs"].append(f"失敗: {fn}")
+            _removed_set = set(_removed)
+            _absent_set = set(_absent)
+            # 実際 に 端末 から 消え た もの (+ 既に 端末 に 無 い もの) を DB DONE に 整合 さ せ る 。
+            # Reconcile to DONE the files actually removed from the device (and those
+            # already absent on the device).
+            try:
+                _done_names = _removed_set | _absent_set
+                if _done_names:
+                    _paths = [_paths_by_name[fn] for fn in _done_names if fn in _paths_by_name]
                     _db_rw = _Db2()
                     try:
                         _fixed = int(_db_rw.mark_phone_delete_done_bulk(_paths) or 0)
@@ -1296,12 +1344,15 @@ def create_app() -> FastAPI:
                 result["logs"].append(f"DB 整合 スキップ: {_e_db}")
             result["ok_cnt"] = ok_cnt
             result["err_cnt"] = err_cnt
+            result["not_found_cnt"] = not_found_cnt
             result["ok"] = err_cnt == 0
             try:
                 result["free_gb_after"] = float(px2.get_storage_root_free_gb() or 0.0)
             except Exception:
                 result["free_gb_after"] = 0.0
-            _Lg2.success(f"[Web][転送ファイル削除] 完了 成功={ok_cnt} 失敗={err_cnt} / 合計={len(targets)}")
+            _Lg2.success(
+                f"[Web][転送ファイル削除] 完了 成功={ok_cnt} 存在せず={not_found_cnt} 失敗={err_cnt} / 合計={len(targets)}"
+            )
         except Exception as e:
             result["error"] = f"{type(e).__name__}: {e}"
             try:

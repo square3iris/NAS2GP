@@ -785,7 +785,13 @@ class UploadWorker:
         """
         アップロード済みファイルを端末から削除する
 
-        Deletes already-uploaded files from the device.
+        v1.11.3: delete_file() が 三値 (True=削除 / False=失敗 / None=端末 に 存在 せず) を
+        返す よう に なっ た ため 、 存在 し なかっ た もの は 削除 済み と し て 返さ ない
+        (DB を 誤っ て DONE 化 し ない)。戻り値 は 実際 に 削除 でき た ファイル名 の リスト 。
+
+        Deletes already-uploaded files from the device. v1.11.3: delete_file() now returns
+        a tri-state; files that were not present are NOT reported as deleted (so the DB is
+        not wrongly marked DONE). Returns the list of files actually removed.
         """
 
         from nas2gp.util import print_phase
@@ -793,22 +799,38 @@ class UploadWorker:
         print_phase(tr("delete.start"))
 
         deleted = 0
+        skipped_absent = 0
+        failed = 0
         deleted_files = []
 
         for filename in filenames:
 
-            if self.device.delete_file(filename):
+            try:
+                _res = self.device.delete_file(filename)
+            except Exception:
+                _res = False
+
+            if _res is True:
 
                 print(f"DELETE : {filename}")
                 deleted += 1
                 deleted_files.append(filename)
 
+            elif _res is None:
+
+                # v1.11.3: 端末 に 存在 し なかっ た (作業フォルダ 違い など)。DB は DONE に しない 。
+                skipped_absent += 1
+                print(f"SKIP   : {filename} (not on device)")
+
             else:
 
+                failed += 1
                 print(f"FAILED : {filename}")
 
         print()
         print(f"Deleted : {deleted}/{len(filenames)}")
+        if skipped_absent or failed:
+            print(f"Skipped(absent) : {skipped_absent}  Failed : {failed}")
 
         return deleted_files
 
