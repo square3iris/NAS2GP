@@ -24,13 +24,17 @@ Setup, launch, daily operation, maintenance, troubleshooting and recovery are co
 
 | Item | Required | Recommended |
 |---|---|---|
-| OS | Windows 10 (22H2+) | Windows 11 (23H2+) |
+| OS | Windows 10 (22H2+) / macOS / Linux | Windows 11 (23H2+) |
+| OS (macOS / Linux) | best-effort (unverified on real macOS hardware) | - |
 | Python | 3.11 | 3.12 |
 | RAM | 4 GB | 8 GB or more (for scanning very large libraries) |
 | Free disk | 20 GB | 100 GB or more |
 | USB | USB 2.0 or higher | USB 3.2 Gen1 / device stock cable |
 | ADB | Android Platform Tools 34+ | latest |
 | Web UI deps | `fastapi` / `uvicorn` / `jinja2` | latest |
+
+> **macOS / Linux (best-effort)**: it can launch on macOS / Linux, but has not been verified on real macOS hardware.
+> Install ADB via Homebrew with `brew install --cask android-platform-tools`, or download the Android platform-tools manually and put `adb` on your PATH.
 
 ### 1.2 device
 
@@ -146,6 +150,24 @@ bin\start_app.cmd         # via the .cmd launcher
 ```
 
 It uses the settings in `source/config/config_ui.json` automatically and prints phase progress and errors to stdout.
+
+### Launching on macOS / Linux (best-effort)
+
+On macOS / Linux use the `.sh` / `.command` launchers (not verified on real macOS hardware).
+
+```bash
+# install dependencies (run from the repository root)
+pip install -r requirements.txt
+
+# launch the Web UI
+cd <folder where NAS2GP is placed>/source
+python3 entry_web.py             # run directly
+bin/start_web_app.sh             # via the .sh launcher
+```
+
+- On macOS you can also double-click `bin/start_web_app.command` from Finder (it delegates to the matching `.sh`).
+- For the CLI, run `python3 app.py` or `bin/start_app.sh`.
+- The launchers use `.venv/bin/python` if present, otherwise `python3`.
 
 ---
 

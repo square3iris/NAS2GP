@@ -65,6 +65,9 @@ Google Photos アプリの標準バックアップ完了を確認したうえで
                           Google Photos 標準バックアップ
 ```
 
+> クライアントは Web ブラウザ / コンソールです (Windows / macOS / Linux。macOS / Linux 対応は v1.9.0 で追加、ベストエフォート)。
+> 起動用ランチャーは `source/bin/` に集約されています (`*.cmd` = Windows、`*.sh` / `*.command` = macOS / Linux)。`.sh` / `.command` は `.venv/bin/python` があればそれを、無ければ `python3` を使用します。
+
 ---
 
 ## 2. サブパッケージ構成
@@ -127,6 +130,7 @@ S2: 端末 再起動 (reboot_device, 再起動後 待機 45 秒)
 ```
 
 - v1.8.0: 個人 の 写真 を 巻き込む 恐れ が あっ た 「/sdcard/DCIM 全体 削除」ステップ は 撤廃 し 、 NAS2GP が 端末 へ 転送 し た ファイル 単位 の 削除 (S1) のみ と し た 。
+- v1.9.0: macOS / Linux 対応 を ベストエフォート で 追加 。 ファイル マネージャ 起動 を `open_in_file_manager()` に 集約 (Windows `os.startfile` / macOS `open` / Linux `xdg-open`) し 、 `.sh` / `.command` ランチャー を `source/bin/` に 追加 し た 。 実機 macOS で の 動作 確認 は 未 実施。
 3 ループで解決しない場合は、無限ループを避けるため安全に停止します。
 
 ---
@@ -222,6 +226,8 @@ POST /api/stop                        即時停止
 POST /api/stop_batch                  今回のバッチで終了
 GET  /progress/sse                    進捗 SSE
 ```
+
+> `POST /api/open_path` は `core/util.py` の `open_in_file_manager()` を呼び出します。Windows は `os.startfile`、macOS は `open`、Linux は `xdg-open` を使い分け、「フォルダを開く」が Windows / macOS / Linux で動作します (v1.9.0)。
 
 ---
 

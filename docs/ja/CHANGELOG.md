@@ -31,6 +31,15 @@
 - **ファイル一覧の移設 (v1.7.19)**: 統計ページから **管理ページ** へ移設 (列ごとの絞り込み / 検索 / 並べ替え)。
 - **設定ページの再編 (v1.7.19)**: バッチ工程順の 9 グループに再構成し、各グループ／項目に説明を常時表示。難解な内部用語 (旧来の挙動 / 受理ルール B 等) を平易な表現に置換。
 
+### v1.9.0 — macOS / Linux 対応 (ベストエフォート)
+
+- **macOS / Linux 対応 (v1.9.0)**: これ まで Windows 専用 だっ た 構成 を macOS / Linux で も 起動 ・ 実行 でき る よう に し た (ベストエフォート)。実機 の macOS で の 動作 確認 は 未 実施。
+- **ファイル マネージャ 起動 の OS 分岐 (v1.9.0)**: `open_in_file_manager()` を `core/util.py` に 追加。Windows は `os.startfile`、macOS は `open`、Linux は `xdg-open` を 使い分け 、 Web UI の 「フォルダを開く」 が macOS / Linux で も 動作 する よう に し た。
+- **POSIX 起動 ランチャー の 追加 (v1.9.0)**: `source/bin/` に `.sh` / `.command` ランチャー (`start_web_app` / `start_app` / `db_admin` / `run_tests`) を 追加。`.sh` は macOS / Linux の ターミナル 用 、 `.command` は macOS の Finder から ダブルクリック する 用 で 対応 する `.sh` へ 委譲 する。`.venv/bin/python` が あれ ば それ を 、 無けれ ば `python3` を 使用 する。既存 の Windows `.cmd` ランチャー は 変更 し て い ない。
+- **依存 定義 の 集約 (v1.9.0)**: リポジトリ 直下 に `requirements.txt` を 追加 (`fastapi` / `uvicorn[standard]` / `jinja2` と テスト 用 `pytest`)。
+- **改行 コード の 固定 (v1.9.0)**: リポジトリ 直下 に `.gitattributes` を 追加 し 、 `*.cmd` / `*.bat` は CRLF、`*.sh` / `*.command` は LF、`*.zip` / `*.db` は バイナリ と し て 扱う よう に し た。
+- **既知 の 制限 (v1.9.0)**: SMB / NAS セッション 維持 ヘルパー (`core/util.py`、`net.exe` 使用) は Windows 専用 の ため macOS / Linux で は スキップ さ れる。macOS / Linux 対応 は ベストエフォート で あ り 、 実機 macOS で の 動作 確認 は 未 実施。
+
 ### v1.8.0 — 製品名 改称 (NAS2GP)・DB パス変更・デバイス呼称の一般化・削除処理の安全化
 
 - **製品名 の 改称 (v1.8.0)**: 製品名 を **NAS2GP** に 変更 (表示名・リポジトリ名・バックアップ名 を 含む)。特定 ブランド の 商標 を 製品名 に 含め ない 構成 と し た。

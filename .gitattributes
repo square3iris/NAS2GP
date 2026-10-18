@@ -1,0 +1,15 @@
+# NAS2GP - 改行 コード ポリシー / line-ending policy
+* text=auto
+
+# Windows バッチ は CRLF 必須 / Windows batch must be CRLF
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# macOS / Linux シェル は LF 必須 (CRLF だ と 実行 でき ない)
+# POSIX shell must be LF (CRLF breaks execution)
+*.sh      text eol=lf
+*.command text eol=lf
+
+# バイナリ / binary
+*.zip binary
+*.db  binary

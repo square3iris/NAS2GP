@@ -2,9 +2,9 @@
 
 NAS（ネットワークストレージ）に保存した写真・動画を、ADB 経由で Android 端末へ転送し、
 **Google Photos のバックアップ完了を確認してから**端末側のファイルを削除する自動同期ツールです。
-Windows 用。操作は Web UI（ブラウザ）に一本化しています。
+Windows を主対象とし、macOS / Linux でもベストエフォートで動作します（実機 macOS では未検証）。操作は Web UI（ブラウザ）に一本化しています。
 
-NAS → Android device photo/video sync tool for Windows.
+NAS → Android device photo/video sync tool for Windows, with best-effort macOS / Linux support (unverified on real macOS hardware).
 It pushes files over ADB, waits until **Google Photos has finished backing them up**,
 and only then deletes them on the device. All operation is done through a browser-based Web UI.
 
@@ -36,7 +36,8 @@ and only then deletes them on the device. All operation is done through a browse
 
 | 項目 | 必要条件 | 推奨 |
 |---|---|---|
-| OS | Windows 10 (22H2 以降) | Windows 11 (23H2 以降) |
+| OS | Windows 10 (22H2 以降) / macOS / Linux | Windows 11 (23H2 以降) |
+| OS (macOS / Linux) | ベストエフォート（実機 macOS では未検証） | - |
 | Python | 3.11 | 3.12 |
 | ADB | Android Platform Tools 34 以降 | 最新版 |
 | Web UI 依存 | `fastapi` / `uvicorn` / `jinja2` | 最新版 |
@@ -56,12 +57,25 @@ ADB（Android Platform Tools）を導入し、`adb` に PATH を通してくだ�
 
 `source` フォルダをカレントディレクトリにして実行します。
 
+**Windows**
+
 ```powershell
 cd source
 python entry_web.py           # ブラウザで http://127.0.0.1:8000/ を開く
 ```
 
 または `source\bin\start_web_app.cmd` をダブルクリックします。
+
+**macOS / Linux**（ベストエフォート・実機 macOS 未検証）
+
+```bash
+pip install -r requirements.txt   # リポジトリルートで実行
+cd source
+python3 entry_web.py
+```
+
+または `source/bin/start_web_app.sh` を実行、macOS では `source/bin/start_web_app.command` をダブルクリックします。
+
 同一 LAN 内のスマートフォンからも `http://<PCのIP>:8000/` で閲覧できます。
 
 ### ディレクトリ構成
@@ -70,12 +84,14 @@ python entry_web.py           # ブラウザで http://127.0.0.1:8000/ を開く
 NAS2GP/
 ├ README.md
 ├ LICENSE
+├ .gitattributes    改行コードの固定 (v1.9.0)
+├ requirements.txt  依存パッケージ定義 (v1.9.0)
 ├ docs/        ja / en のドキュメント
 ├ archive/     リリース版のスナップショット
 └ source/      実行エントリ・本体パッケージ・実行時データ
     ├ entry_web.py / app.py / db_admin.py
     ├ nas2gp/   本体パッケージ
-    ├ bin/      起動用 .cmd
+    ├ bin/      起動用 .cmd / .sh / .command
     ├ config/   設定ファイル（個人環境の設定。Git 管理外）
     ├ database/ 転送履歴データベース（Git 管理外）
     └ logs/     実行ログ（Git 管理外）
@@ -90,7 +106,8 @@ NAS2GP/
 ### 既知の制限・サポートについて
 
 - 作者のスキル上の制約により、**サポートはベストエフォート（可能な範囲）** となります。すべての環境での動作を保証するものではありません。
-- 動作確認は Windows と Android の限られた実機・環境で行っています。他社端末・他 OS での動作は未検証です。
+- 動作確認は Windows と Android の限られた実機・環境で行っています。**macOS / Linux 対応はベストエフォート**であり、実機の macOS では未検証です。他社端末での動作も未検証です。
+- SMB / NAS のセッション維持処理は Windows 専用のため、macOS / Linux ではスキップされます。
 - Google Photos の「バックアップ完了」判定は端末の画面表示（UI ダンプ）に依存しているため、Google Photos アプリの仕様変更により判定できなくなる可能性があります。
 - 長時間運用時の切断・電池切れなどへの自動復旧を実装していますが、完全ではありません。復旧できない場合は安全に停止する挙動をとります。
 - 既知の不具合は `docs/ja/CHANGELOG.md` および `docs/ja/ROADMAP_AND_TODO.md` に随時記載します。
@@ -127,7 +144,8 @@ MIT License（`LICENSE` を参照）。
 
 | Item | Required | Recommended |
 |---|---|---|
-| OS | Windows 10 (22H2+) | Windows 11 (23H2+) |
+| OS | Windows 10 (22H2+) / macOS / Linux | Windows 11 (23H2+) |
+| OS (macOS / Linux) | best-effort (unverified on real macOS hardware) | - |
 | Python | 3.11 | 3.12 |
 | ADB | Android Platform Tools 34+ | Latest |
 | Web UI deps | `fastapi` / `uvicorn` / `jinja2` | Latest |
@@ -147,12 +165,25 @@ Install ADB (Android Platform Tools) and make sure `adb` is on your PATH.
 
 Make the `source` folder the current directory and launch:
 
+**Windows**
+
 ```powershell
 cd source
 python entry_web.py           # then open http://127.0.0.1:8000/ in a browser
 ```
 
 You can also double-click `source\bin\start_web_app.cmd`.
+
+**macOS / Linux** (best-effort, unverified on real macOS hardware)
+
+```bash
+pip install -r requirements.txt   # run from the repository root
+cd source
+python3 entry_web.py
+```
+
+Or run `source/bin/start_web_app.sh`, or on macOS double-click `source/bin/start_web_app.command`.
+
 Phones on the same LAN can view it at `http://<PC-IP>:8000/`.
 
 ### Layout
@@ -161,12 +192,14 @@ Phones on the same LAN can view it at `http://<PC-IP>:8000/`.
 NAS2GP/
 ├ README.md
 ├ LICENSE
+├ .gitattributes    line-ending policy (v1.9.0)
+├ requirements.txt  runtime / test dependencies (v1.9.0)
 ├ docs/        ja / en documentation
 ├ archive/     release snapshots (one zip per version)
 └ source/      entry points, main package and runtime data
     ├ entry_web.py / app.py / db_admin.py
     ├ nas2gp/   main package
-    ├ bin/      launcher .cmd files
+    ├ bin/      launcher .cmd / .sh / .command files
     ├ config/   settings (per-environment; not committed)
     ├ database/ transfer history database (not committed)
     └ logs/     runtime logs (not committed)
@@ -181,7 +214,8 @@ NAS2GP/
 ### Known limitations and support
 
 - Due to the author's skill limitations, **support is best-effort** only. Behavior is not guaranteed in every environment.
-- Verification has been done on a limited set of Windows / Android environments. Other vendors and OSes are untested.
+- Verification has been done on a limited set of Windows / Android environments. **macOS / Linux support is best-effort** and has not been verified on real macOS hardware. Other vendors are untested too.
+- The SMB / NAS session keep-alive is Windows-only and is skipped on macOS / Linux.
 - The "backup complete" detection relies on the Google Photos screen (UI dump), so a Google Photos UI change may break the detection.
 - Automatic recovery from disconnects / battery depletion during long runs is implemented, but it is not perfect; when recovery is not possible the tool stops safely.
 - Known issues are recorded in `docs/en/CHANGELOG.md` and `docs/en/ROADMAP_AND_TODO.md`.

@@ -12,7 +12,7 @@ the local copies from the device. All interaction is provided through a single
 ## 1. Overall Structure (Layered + Web UI)
 
 ```
-          [Windows PC browser / console]
+          [PC browser / console]
                      |
                      v
    source/entry_web.py / app.py / db_admin.py   (thin entry points)
@@ -65,6 +65,9 @@ the local copies from the device. All interaction is provided through a single
                           UIAutomator dump (on-screen text)
                           Google Photos standard backup
 ```
+
+> The client is a Web browser / console (Windows / macOS / Linux; macOS / Linux support was added in v1.9.0, best-effort).
+> Launch scripts live under `source/bin/` (`*.cmd` = Windows, `*.sh` / `*.command` = macOS / Linux). `.sh` / `.command` use `.venv/bin/python` if present, otherwise `python3`.
 
 ---
 
@@ -128,6 +131,7 @@ S2: reboot the device (reboot_device, wait 45s after reboot)
 ```
 
 - v1.8.0: the "delete all of /sdcard/DCIM" step, which risked wiping personal photos, was removed; only per-file deletion of NAS2GP-transferred files (S1) remains.
+- v1.9.0: added best-effort macOS / Linux support. File-manager opening was centralized into `open_in_file_manager()` (Windows `os.startfile` / macOS `open` / Linux `xdg-open`), and `.sh` / `.command` launchers were added under `source/bin/`. Not verified on real macOS hardware.
 If unresolved after 3 loops, it stops safely to avoid infinite loops.
 
 ---
@@ -223,6 +227,8 @@ POST /api/stop                        stop immediately
 POST /api/stop_batch                  stop after this batch
 GET  /progress/sse                    progress SSE
 ```
+
+> `POST /api/open_path` calls `open_in_file_manager()` in `core/util.py`. Windows uses `os.startfile`, macOS uses `open`, Linux uses `xdg-open`, so "open folder" works on Windows / macOS / Linux (v1.9.0).
 
 ---
 

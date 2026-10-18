@@ -1,0 +1,7 @@
+# NAS2GP - 実行時 依存 / runtime dependencies
+fastapi
+uvicorn[standard]
+jinja2
+
+# テスト 用 / for tests
+pytest

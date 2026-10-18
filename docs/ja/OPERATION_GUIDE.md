@@ -24,13 +24,17 @@
 
 | 項目 | 必要 | 推奨 |
 |---|---|---|
-| OS | Windows 10 (22H2 以降) | Windows 11 (23H2 以降) |
+| OS | Windows 10 (22H2 以降) / macOS / Linux | Windows 11 (23H2 以降) |
+| OS (macOS / Linux) | ベストエフォート (実機 macOS では未検証) | - |
 | Python | 3.11 | 3.12 |
 | RAM | 4 GB | 8 GB 以上 (大量ファイルのスキャン時) |
 | ディスク空き | 20 GB | 100 GB 以上 |
 | USB | USB 2.0 以上 | USB 3.2 Gen1 / 端末 純正ケーブル |
 | ADB | Android Platform Tools 34+ | 最新版 |
 | Web UI 依存 | `fastapi` / `uvicorn` / `jinja2` | 最新版 |
+
+> **macOS / Linux (ベストエフォート)**: macOS / Linux でも起動できますが、実機の macOS では未検証です。
+> ADB は Homebrew なら `brew install --cask android-platform-tools`、または Android 公式の platform-tools を手動導入して `adb` に PATH を通してください。
 
 ### 1.2 端末 側
 
@@ -146,6 +150,24 @@ bin\start_app.cmd         # .cmd ランチャー経由
 ```
 
 `source/config/config_ui.json` の設定を自動使用し、標準出力に各フェーズの進捗とエラーを表示します。
+
+### macOS / Linux での起動 (ベストエフォート)
+
+macOS / Linux では `.sh` / `.command` ランチャーを使用します (実機の macOS では未検証)。
+
+```bash
+# 依存パッケージの導入 (リポジトリルートで実行)
+pip install -r requirements.txt
+
+# Web UI 起動
+cd <NAS2GP を配置したフォルダ>/source
+python3 entry_web.py             # 直接実行
+bin/start_web_app.sh             # .sh ランチャー経由
+```
+
+- macOS では `bin/start_web_app.command` を Finder からダブルクリックしても起動できます (対応する `.sh` へ委譲)。
+- CLI は `python3 app.py` または `bin/start_app.sh` で起動します。
+- ランチャーは `.venv/bin/python` があればそれを、無ければ `python3` を使用します。
 
 ---
 

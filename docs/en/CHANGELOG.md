@@ -32,6 +32,15 @@ removed desktop-GUI era is compressed).
 - **File list moved (v1.7.19)**: moved from the Stats page to the **Management page** (per-column filter / search / sort).
 - **Settings page reorganized (v1.7.19)**: restructured into 9 groups in pipeline order, with always-visible descriptions of "which stage" and "what changes" for each group/item. Confusing internal jargon (legacy behavior / accept rule B, etc.) was replaced with plain wording.
 
+### v1.9.0 — macOS / Linux support (best-effort)
+
+- **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.
+- **OS branch for opening the file manager (v1.9.0)**: added `open_in_file_manager()` to `core/util.py`. Windows uses `os.startfile`, macOS uses `open`, Linux uses `xdg-open`, so the Web UI "open folder" action now also works on macOS / Linux.
+- **POSIX launchers added (v1.9.0)**: added `.sh` / `.command` launchers under `source/bin/` (`start_web_app` / `start_app` / `db_admin` / `run_tests`). `.sh` is for the macOS / Linux terminal; `.command` is for double-clicking from macOS Finder and delegates to the matching `.sh`. They use `.venv/bin/python` if present, otherwise `python3`. The existing Windows `.cmd` launchers are unchanged.
+- **Centralized dependency list (v1.9.0)**: added `requirements.txt` at the repository root (`fastapi` / `uvicorn[standard]` / `jinja2`, plus `pytest` for tests).
+- **Line-ending policy (v1.9.0)**: added `.gitattributes` at the repository root, enforcing `*.cmd` / `*.bat` = CRLF, `*.sh` / `*.command` = LF, and `*.zip` / `*.db` = binary.
+- **Known limitations (v1.9.0)**: the SMB / NAS session keep-alive helper (`core/util.py`, uses `net.exe`) is Windows-only and is skipped on macOS / Linux. macOS / Linux support is best-effort and has not been verified on real macOS hardware.
+
 ### v1.8.0 — product rename (NAS2GP), DB path change, generic device wording, safer deletion
 
 - **Product rename (v1.8.0)**: renamed the product to **NAS2GP** (display name, repository name, backup name). The product name no longer embeds a specific brand trademark.

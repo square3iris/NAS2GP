@@ -16,13 +16,15 @@ NAS2GP/ (リポジトリルート)
 ├── README.md
 ├── LICENSE
 ├── .gitignore
+├── .gitattributes         ← 改行コードポリシー (v1.9.0)
+├── requirements.txt       ← 依存パッケージ定義 (v1.9.0)
 ├── docs/                  ← ドキュメント (ja / en)
 ├── archive/
-│   └── NAS2GP_v1.8.0.zip  ← リリース版スナップショット
+│   └── NAS2GP_v1.9.0.zip  ← リリース版スナップショット
 └── source/                ← 実行エントリ・パッケージ・実行時データを集約
     ├── app.py / entry_web.py / db_admin.py   ← 実行エントリ
     ├── nas2gp/            ← メインパッケージ
-    ├── bin/               ← 起動用 .cmd ランチャー
+    ├── bin/               ← 起動用 .cmd / .sh / .command ランチャー
     ├── scripts/           ← 補助スクリプト
     ├── config/
     │   ├── config_ui.json   ← 設定の永続化データ (初回 / 保存時に自動生成)

@@ -66,6 +66,31 @@ def smb_session_keep_alive(path_str: str) -> bool:
 
 
 # ============================================
+# OS 連携: ファイル マネージャ で 開く
+# OS integration: open in the file manager
+# ============================================
+
+def open_in_file_manager(path) -> bool:
+    """
+    指定 パス を OS 標準 の ファイル マネージャ で 開く 。
+    Windows: os.startfile / macOS: open / Linux: xdg-open
+
+    Open the given path with the OS default file manager.
+    Windows: os.startfile / macOS: open / Linux: xdg-open
+
+    起動 でき ない 場合 は 例外 を 送出 する (呼び出し側 で 処理)。
+    Raises on failure so the caller can report the error.
+    """
+    p = str(Path(path))
+    if sys.platform.startswith("win"):
+        os.startfile(p)  # type: ignore[attr-defined]  # Windows のみ / Windows only
+    else:
+        opener = "open" if sys.platform == "darwin" else "xdg-open"
+        subprocess.Popen([opener, p], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return True
+
+
+# ============================================
 # ファイル情報ヘルパー
 # File info helpers
 # ============================================

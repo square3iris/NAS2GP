@@ -1063,7 +1063,8 @@ def create_app() -> FastAPI:
                 return {"ok": False, "error": f"unknown target: {target!r}"}
             path = _P(path)
             path.mkdir(parents=True, exist_ok=True)
-            os.startfile(str(path))  # type: ignore[attr-defined]
+            from nas2gp.core.util import open_in_file_manager
+            open_in_file_manager(str(path))
             return {"ok": True, "path": str(path)}
         except Exception as e:
             return {"ok": False, "path": str(path or ""), "error": f"{type(e).__name__}: {e}"}
