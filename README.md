@@ -19,6 +19,17 @@ and only then deletes them on the device. All operation is done through a browse
 - Google Photos のバックアップ完了を待ってから、**NAS2GP が転送したファイルだけ**を端末から削除します（個人の写真を巻き込む一括削除は行いません）。
 - 転送状況は SQLite データベースで管理し、Web UI から進捗・統計・ファイル一覧を確認できます。
 
+### 私の使い方（活用例）
+
+Google Photos の無制限アップロードを活かすための、作者自身の使い方です。
+
+- Google Photos の無制限アップロードに対応した端末（初代 Pixel など）へ、NAS の写真・動画をまとめて転送してバックアップしています。
+- そのために、初代 Pixel を **AliExpress で中古購入**しました。無制限アップロード対応端末はバックアップ専用機として割り切って使えます。
+- **メイン端末とは別に用意することを推奨します。** 本ツールは Google Photos のバックアップ完了まで端末を長時間占有するため、メイン端末を同時に使いたいときに支障が出ます。
+- 端末は充電しながらの長時間運用を前提としています（電池切れ対策として、本ツールに電池残量監視と自動復旧を実装しています）。
+
+Google Photos の無制限アップロードの条件は Google のポリシー変更により変わることがあります。最新の条件はご自身でご確認ください。
+
 ### 主な機能
 
 | 機能 | 内容 |
@@ -126,6 +137,17 @@ MIT License（`LICENSE` を参照）。
 - The destination is a "working folder" on the device (default `/sdcard/DCIM/NAS2GP`). Being under DCIM, it is eligible for Google Photos auto backup.
 - After Google Photos finishes backing the files up, **only the files transferred by NAS2GP** are deleted from the device (there is no bulk delete that could touch your personal photos).
 - Transfer state is tracked in a SQLite database. The Web UI shows progress, statistics and the file list.
+
+### My use case
+
+This is how the author actually uses the tool, to make the most of Google Photos unlimited storage.
+
+- Photos and videos from the NAS are transferred in bulk to a device that has the Google Photos unlimited upload benefit (such as the original Pixel) so they get backed up.
+- For that purpose I bought a **used original Pixel on AliExpress**. A device with the unlimited upload benefit can be dedicated to backup duty.
+- **Using a separate device from your main phone is recommended.** This tool occupies the device for a long time until the Google Photos backup completes, so it gets in the way when you want to use your main phone at the same time.
+- The device is expected to run for long hours while charging (the tool includes battery monitoring and automatic recovery for battery depletion).
+
+The conditions for Google Photos unlimited upload may change with Google's policy. Please check the current terms yourself.
 
 ### Main features
 
