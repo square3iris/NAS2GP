@@ -551,7 +551,7 @@ def _settings_ui_schema() -> List[Dict[str, Any]]:
              "desc": tr("settings.tooltip.backup_check_interval")},
             {"key": "MIN_ACCEPT_ELAPSED_SECONDS", "label": tr("settings.label.min_accept_elapsed"), "type": "int", "min": 1, "max": 600,
              "desc": tr("settings.tooltip.min_accept_elapsed")},
-            {"key": "BACKUP_STALLED_LIMIT", "label": tr("settings.label.stalled_limit"), "type": "int", "min": 10, "max": 600,
+            {"key": "BACKUP_STALLED_LIMIT", "label": tr("settings.label.stalled_limit"), "type": "int", "min": 0, "max": 600,
              "desc": tr("settings.tooltip.stalled_limit")},
             {"key": "CYCLE_GP_BEFORE_WAIT", "label": tr("settings.label.cycle_gp"), "type": "bool",
              "desc": tr("settings.tooltip.cycle_gp")},

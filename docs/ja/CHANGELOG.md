@@ -52,6 +52,17 @@
 - **関連 i18n キー (v1.11.0)**: `settings.label.min_throughput` / `settings.tooltip.min_throughput` / `bw.log.idle_timeout_scaled` を `lang/ja.py` と `lang/en.py` に追加。
 - **バージョン更新 (v1.11.0)**: `settings.APP_VERSION` を `1.10.0` → `1.11.0` に変更。
 
+### v1.11.1 — 停滞リスタート緩和 と タイムアウト表示 / ラベル の 是正
+
+- **停滞 リスタート の 比例 緩和 (v1.11.1)**: 大容量 ファイル ほど 無進捗 タイムアウト と 同様 に 「停滞 リスタート」 の しきい値 も 比例 緩和 する (`backup_waiter.py` に `compute_idle_timeout()` / `compute_stall_limit()` を 新設)。 従来 は 単一 の 大容量 ファイル で 「バックアップ中」 が 続く と Google Photos を 短 周期 で 再起動 し て しまっ て い た。 小 さい バッチ で は 従来 通り。
+- **`BACKUP_STALLED_LIMIT` の 意味 修正 (v1.11.1)**: 既定 を `150` → `15` に 変更 (実体 は 停滞 リスタート の 連続 回数)。 設定 ラベル を 「停滞 リスタート 判定 (回数)」 に 、 ツールチップ を 実時間 (監視 間隔 依存) の 説明 に 是正。 UI の min も ツールチップ の 「0 で 無効」 に 合わせ 0 に 統一。
+- **タイムアウト 定数 の 一元化 (v1.11.1)**: `settings.py` の `BACKUP_TIMEOUT` (720 → 600) と `BACKUP_CHECK_INTERVAL` (3 → 8) を config 既定 に 統一。 実行時 は config_ui.json の 値 が settings へ 上書き さ れる ため 挙動 は 不変 (従来 の 定数 は 死に値 だっ た)。
+- **タイムアウト 関連 ツールチップ の 既定値 是正 (v1.11.1)**: `backup_timeout` (720 → 600) / `backup_check_interval` (30 → 8) / `min_accept_elapsed` (90 → 15) / `stalled_limit` (例 3秒 → 8秒) を 実効 値 に 修正。
+- **Phase 5 開始 ログ の 実効 値 表示 (v1.11.1)**: バッチ 開始 時 の タイムアウト 表示 を 、 基準 値 では なく 実効 値 (`compute_idle_timeout` 相当) に 修正。
+- **言語 キー 整合 の 修正 (v1.11.1)**: `lang/ja.py` の `log.端末.*` (9 キー) を `log.device.*` に 改名。 診断 ページ の 「言語 ファイル 整合性 (code=ja / miss=9)」 警告 を 解消 (コード 側 は 元 から `log.device.*` を 参照 し て い た)。
+- **統計 ページ 説明 文 の 整理 (v1.11.1)**: 既に 管理 ページ へ 移設 済み の ファイ ル 一覧 に つ い て の 説明 文 (`web.stats.desc`) を 削除 し 、 グラフ 表示 の 説明 のみ に 整理。
+- **バージョン更新 (v1.11.1)**: `settings.APP_VERSION` を `1.11.0` → `1.11.1` に変更。
+
 ### v1.9.0 — macOS / Linux 対応 (ベストエフォート)
 
 - **macOS / Linux 対応 (v1.9.0)**: これ まで Windows 専用 だっ た 構成 を macOS / Linux で も 起動 ・ 実行 でき る よう に し た (ベストエフォート)。実機 の macOS で の 動作 確認 は 未 実施。

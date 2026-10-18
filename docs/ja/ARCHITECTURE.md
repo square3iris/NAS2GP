@@ -268,3 +268,4 @@ GET  /progress/sse                    進捗 SSE
 | 多言語キー整合 | ログ / UI キー追加時は `ja.py` と `en.py` の両方に追加。 | `core/lang/*.py` |
 | 容量不足時の段階復旧 | GC (NAS2GP 転送済みファイル削除) → 再起動 の 2 段階を最大 3 ループ、解決しなければ強制停止。DCIM 全体削除は自動処理では撤廃（手動の全削除ボタンのみ、二重確認＋同意必須）。 | `uploader/flow.py` 復旧シーケンス |
 | バックアップ待機の二段構え | 無進捗タイムアウト（`MIN_BACKUP_THROUGHPUT_MBPS` によりバッチサイズ比例で下限を延長）と `BACKUP_ABSOLUTE_MAX_SECONDS` (既定 7200 秒) の絶対上限。 | `worker/backup_waiter.py` |
+| 停滞リスタートの比例緩和 | 「バックアップ中」が `BACKUP_STALLED_LIMIT` 回連続したら Google Photos を再起動。大容量バッチでは無進捗タイムアウトに比例して自動緩和し、進行中の大容量ファイルを誤って中断しない（`compute_idle_timeout` / `compute_stall_limit`）。 | `worker/backup_waiter.py` |

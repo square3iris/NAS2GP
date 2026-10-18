@@ -13,7 +13,7 @@ import os as _os
 # 更新 する とき は この 1 箇所 だけ を 変更 し て ください 。
 # Product version: the single source of truth referenced by the Web UI, OpenAPI (/docs)
 # and diagnostics. When releasing, update only this one place.
-APP_VERSION = "1.11.0"
+APP_VERSION = "1.11.1"
 
 # --------------------------------------------
 # Work Root (v1.7.4 追加: 診断 / リセット など の 「DB ファイル 相対パス 解決」 を 共通化)
@@ -248,7 +248,11 @@ WEB_SSE_INTERVAL_SECONDS = 1.0
 #   or a new "complete" is detected, so
 #   大容量 ファイル の 長時間 バックアップ を 誤って 打ち切ら ない 。
 #   long backups of large files are not cut off by mistake.
-BACKUP_TIMEOUT = 720
+# v1.11.1: config (config_loader) の 既定 600 に 合わせ て 一元化 した。
+#   実行時 は config_ui.json の 値 が settings へ 上書き さ れる (Web / CLI 共通)。
+# v1.11.1: unified to the config default (600); at runtime the config value
+#   overrides this constant for both the Web UI and the CLI.
+BACKUP_TIMEOUT = 600
 
 # 絶対上限 (秒): 進捗 の 有無 に 関わら ず これを 超え た ら 打ち切る (無限 待機 防止)。 v1.7.15 追加。
 # Absolute upper limit (sec): aborts once exceeded regardless of progress (prevents infinite wait). Added in v1.7.15.
@@ -265,13 +269,20 @@ BACKUP_ABSOLUTE_MAX_SECONDS = 7200
 #   Set to 0 or less to disable this scaling (fixed BACKUP_TIMEOUT only).
 MIN_BACKUP_THROUGHPUT_MBPS = 2.0
 
-# 進捗なし停滞判定時間: 180 -> 150 秒 (v1.5 調整)
-# No-progress stall threshold: 180 -> 150 sec (v1.5 tuning)
-BACKUP_STALLED_LIMIT = 150
+# v1.11.1: 停滞 リスタート の しきい値 (連続 回数)。「バックアップ中」 が 監視 ループ で
+#   この 回数 連続 し た ら Google Photos を 再起動 して 立て直す 。 実時間 は 監視 間隔
+#   (BACKUP_CHECK_INTERVAL) に 依存 する (例: 15 回 × 8 秒 ≒ 120 秒)。 大容量 バッチ 時 は
+#   無進捗 タイムアウト に 比例 させ て 自動 で 緩和 さ れる (worker/backup_waiter.py)。
+#   0 以下 で 停滞 リスタート を 無効 化 。
+# v1.11.1: Stall-restart threshold (consecutive polls). Time is derived from
+#   BACKUP_CHECK_INTERVAL. Relaxed proportionally for large batches. <=0 disables.
+BACKUP_STALLED_LIMIT = 15
 
-# 監視ループ間隔: 6 -> 4 -> 3 秒 (complete 取りこぼし更に低減)
-# Monitoring loop interval: 6 -> 4 -> 3 sec (further reduces missed "complete" events)
-BACKUP_CHECK_INTERVAL = 3
+# 監視ループ間隔 (秒)。v1.11.1: config (config_loader) の 既定 8 に 合わせ て 一元化 した。
+#   実行時 は config_ui.json の 値 が settings へ 上書き さ れる (Web / CLI 共通)。
+# Monitoring loop interval (sec). v1.11.1: unified to the config default (8); at
+#   runtime the config value overrides this constant for both Web UI and CLI.
+BACKUP_CHECK_INTERVAL = 8
 
 
 # --------------------------------------------

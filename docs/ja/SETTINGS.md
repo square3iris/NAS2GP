@@ -39,7 +39,7 @@ NAS2GP/ (リポジトリルート)
 
 ---
 
-## 2. config_ui.json (スキーマバージョン 9)
+## 2. config_ui.json (スキーマバージョン 10)
 
 初回起動時 / 旧設定ファイル読込時に不足キーをデフォルト値で自動補完します
 (`config_loader._merge_missing_schema`)。旧バージョンのファイルでも KeyError は起きません。
@@ -156,8 +156,8 @@ NAS2GP/ (リポジトリルート)
 | `MIN_BACKUP_THROUGHPUT_MBPS` | float | `2.0` | 無進捗タイムアウトをバッチサイズから見積もる際の「保守的な想定速度」(MB/s)。サイズ ÷ この値 を `BACKUP_TIMEOUT` の下限として使う (`0` で無効)。残り枚数が減らない単一の大容量ファイル (例: 4GB の動画) を誤って打ち切らない |
 | `BACKUP_CHECK_INTERVAL` | int | `8` | 画面文言 (UIAutomator dump) を確認する間隔 (秒) |
 | `MIN_ACCEPT_ELAPSED_SECONDS` | int | `15` | 完了受理に必要な最低経過時間 (秒) |
-| `BACKUP_STALLED_LIMIT` | int | `15` | 無進捗が連続したと判定する回数 |
-| `CYCLE_GP_BEFORE_WAIT` | bool | `true` | 転送直後に GP を再起動して新規写真を認識させる (待機前の Stop→Scan→Start) |
+| `BACKUP_STALLED_LIMIT` | int | `15` | 停滞リスタートの判定回数。「バックアップ中」が監視ループでこの回数だけ連続したら Google Photos を再起動して立て直す (実時間は `BACKUP_CHECK_INTERVAL` に依存。例: 15回 × 8秒 ≒ 120秒)。大容量ファイルでは無進捗タイムアウトに比例して自動で緩和される (`0` で無効) |
+| `CYCLE_GP_BEFORE_WAIT` | bool | `true` | 転送直後に Google Photos を再起動して新規写真を認識させる (待機前の Stop→Scan→Start) |
 | `RESTART_PHOTOS_AFTER_PUSH` | bool | `false` | バックアップ失敗時のみ Google フォトを再起動する |
 
 ### 3.6 端末の画面 (明るさ / 常夜灯)
@@ -328,6 +328,7 @@ python db_admin.py --help
 - 判定が遅い: `MIN_ACCEPT_ELAPSED_SECONDS` を短くする
 - 誤判定が多い (早すぎる): `MIN_ACCEPT_ELAPSED_SECONDS` を増やす / `BACKUP_ABSOLUTE_MAX_SECONDS` を調整する
 - 大容量ファイル (数 GB の動画 1 本など) で打ち切られる: `MIN_BACKUP_THROUGHPUT_MBPS` を下げる (タイムアウトが延長される) / `BACKUP_TIMEOUT` を増やす
+- 大容量ファイルで Google Photos が再起動を繰り返す (停滞リスタートの誤発動): `BACKUP_STALLED_LIMIT` を増やす。無進捗タイムアウトが延長された場合は自動で比例緩和されるため、通常は既定のままで問題ない
 
 ### 6.5 長時間運転 (スマホの電池切れ対策)
 

@@ -7,7 +7,7 @@ import time
 
 from nas2gp.core.config import COMMIT_INTERVAL
 from nas2gp.storage.db import Database
-from nas2gp.worker.backup_waiter import UploadWorker
+from nas2gp.worker.backup_waiter import UploadWorker, compute_idle_timeout
 from nas2gp.core.i18n import tr
 from datetime import timedelta
 from pathlib import Path
@@ -1118,7 +1118,10 @@ class Uploader:
             try:
                 from nas2gp.core.logger import Logger as _WBLg
                 _WBLg.info(
-                    tr("log.flow.phase5_log").format(batch=batch_index, total=len(batches), timeout=getattr(_up_s2 if '_up_s2' in dir() else None, 'BACKUP_TIMEOUT', 720))
+                    tr("log.flow.phase5_log").format(
+                        batch=batch_index, total=len(batches),
+                        timeout=compute_idle_timeout(None, locals().get("_batch_total_bytes", 0)),
+                    )
                 )
             except Exception:
                 pass

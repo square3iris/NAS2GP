@@ -41,6 +41,64 @@ from nas2gp.core.i18n import tr
 from nas2gp.core import events as _events
 
 
+def compute_idle_timeout(base_timeout=None, batch_bytes=None) -> int:
+    """v1.11.1: 無進捗 タイムアウト の 実効 値 (秒) を 計算 する 。
+    基準 の BACKUP_TIMEOUT を 、 バッチ 合計 サイズ ÷ 想定 速度 (MIN_BACKUP_THROUGHPUT_MBPS)
+    で 延長 し 、 絶対 上限 (BACKUP_ABSOLUTE_MAX_SECONDS) で キャップ する 。
+    単一 の 大容量 ファイル で は 残り 枚数 が 減ら ず ETA も 得 られ ない ため 、
+    固定 値 で は 誤って 打ち切る こと を 防ぐ 。
+    v1.11.1: Compute the effective no-progress timeout (seconds). Extend the base
+    BACKUP_TIMEOUT by batch_bytes / assumed speed, capped by the absolute maximum."""
+    from nas2gp.core import settings as _settings
+    if base_timeout is None:
+        base_timeout = int(getattr(_settings, "BACKUP_TIMEOUT", BACKUP_TIMEOUT))
+    _idle = int(base_timeout)
+    _abs_max = int(
+        getattr(_settings, "BACKUP_ABSOLUTE_MAX_SECONDS", BACKUP_ABSOLUTE_MAX_SECONDS)
+    )
+    try:
+        _bb = int(batch_bytes or 0)
+        _mbps = float(getattr(
+            _settings, "MIN_BACKUP_THROUGHPUT_MBPS", MIN_BACKUP_THROUGHPUT_MBPS
+        ) or 0.0)
+        if _bb > 0 and _mbps > 0:
+            _est = int(_bb / (_mbps * 1024 * 1024))
+            if _est > _idle:
+                _idle = _est
+    except Exception:
+        pass
+    if _idle > _abs_max:
+        _idle = _abs_max
+    if _idle < 1:
+        _idle = 1
+    return _idle
+
+
+def compute_stall_limit(idle_timeout=None, interval=None) -> int:
+    """v1.11.1: 停滞 リスタート の 実効 しきい値 (連続 回数) を 計算 する 。
+    無進捗 タイムアウト が 延長 さ れ た 場合 (大容量 バッチ) のみ 、 しきい値 を
+    その 時間 に 比例 させ て 緩和 し 、 進行 中 の 大容量 ファイル で Google Photos を
+    誤って 再起動 し ない よう に する 。 小さい バッチ で は 従来 通り (基準 回数 の まま)。
+    0 以下 を 返し た 場合 は 停滞 リスタート を 行わ ない (無効)。
+    v1.11.1: Compute the effective stall-restart threshold (consecutive polls).
+    Only when the no-progress timeout was extended (large batch) is the threshold
+    relaxed in proportion, so an in-flight large file is not force-restarted.
+    Small batches keep the base threshold. A return value <= 0 disables it."""
+    from nas2gp.core import settings as _settings
+    base = int(getattr(_settings, "BACKUP_STALLED_LIMIT", BACKUP_STALLED_LIMIT))
+    if base <= 0:
+        return 0
+    if interval is None:
+        interval = int(getattr(_settings, "BACKUP_CHECK_INTERVAL", BACKUP_CHECK_INTERVAL))
+    interval = max(1, int(interval))
+    base_timeout = int(getattr(_settings, "BACKUP_TIMEOUT", BACKUP_TIMEOUT))
+    if idle_timeout is None:
+        idle_timeout = base_timeout
+    if int(idle_timeout) <= base_timeout:
+        return base
+    return max(base, int(int(idle_timeout) / interval))
+
+
 class UploadWorker:
 
     def __init__(self):
@@ -198,35 +256,29 @@ class UploadWorker:
         #   単一 の 大容量 ファイル で は Google Photos の 「残り 枚数」 が 減ら ず 、
         #   ETA も 取得 でき ない こと が ある ため 、 固定 の BACKUP_TIMEOUT で は
         #   誤って 打ち切る (例: 4GB の 動画 が 600 秒 で NG に なる)。
-        #   バッチ 合計 サイズ ÷ 想定 速度 (MIN_BACKUP_THROUGHPUT_MBPS) を 下限 と し 、
-        #   絶対 上限 (BACKUP_ABSOLUTE_MAX_SECONDS) で キャップ する 。
-        # v1.11.0: Scale the no-progress timeout with the batch size. A single large
-        #   file keeps Google Photos' remaining count flat and may expose no ETA, so a
-        #   fixed BACKUP_TIMEOUT cuts it off by mistake (e.g. a 4 GB video failing at
-        #   600 s). Use batch_bytes / assumed speed as the lower bound, capped by the
-        #   absolute maximum.
-        _idle_timeout = int(timeout)
-        _bb = 0
-        _mbps = 0.0
-        try:
-            _bb = int(batch_bytes or 0)
-            _mbps = float(getattr(
-                _settings, "MIN_BACKUP_THROUGHPUT_MBPS", MIN_BACKUP_THROUGHPUT_MBPS
-            ) or 0.0)
-            if _bb > 0 and _mbps > 0:
-                _est = int(_bb / (_mbps * 1024 * 1024))
-                if _est > _idle_timeout:
-                    _idle_timeout = _est
-        except Exception:
-            pass
-        if _idle_timeout > _abs_max:
-            _idle_timeout = _abs_max
-        if _idle_timeout < 1:
-            _idle_timeout = 1
+        #   同じ 比例 で 停滞 リスタート の しきい値 も 緩和 し 、 進行 中 の 大容量
+        #   ファイル で Google Photos を 誤って 再起動 し ない よう に する 。
+        # v1.11.0: Scale the no-progress timeout with the batch size (see
+        #   compute_idle_timeout). The stall-restart threshold is relaxed with the
+        #   same ratio so an in-flight large file is not force-restarted.
+        _idle_timeout = compute_idle_timeout(timeout, batch_bytes)
+        _stall_limit = compute_stall_limit(_idle_timeout, interval)
+        _stall_base = int(getattr(_settings, "BACKUP_STALLED_LIMIT", BACKUP_STALLED_LIMIT))
+        if _stall_limit > 0 and _stall_limit != _stall_base:
+            try:
+                Logger.info(tr("bw.log.stall_limit_scaled").format(
+                    base=_stall_base, scaled=_stall_limit,
+                ))
+            except Exception:
+                pass
         if _idle_timeout != int(timeout):
             # 延長 が 効い た 場合 のみ 1 行 残す (長時間 評価 の 事後 解析 用)。
             # Log one line only when the scaling kicked in (for post-run analysis).
             try:
+                _bb = int(batch_bytes or 0)
+                _mbps = float(getattr(
+                    _settings, "MIN_BACKUP_THROUGHPUT_MBPS", MIN_BACKUP_THROUGHPUT_MBPS
+                ) or 0.0)
                 Logger.info(tr("bw.log.idle_timeout_scaled").format(
                     base=int(timeout), scaled=_idle_timeout,
                     gb=round(_bb / 1024 ** 3, 2), mbps=_mbps,
@@ -313,7 +365,7 @@ class UploadWorker:
                 backing_up_count += 1
                 complete_streak = 0
 
-                if backing_up_count >= BACKUP_STALLED_LIMIT:
+                if _stall_limit > 0 and backing_up_count >= _stall_limit:
                     Logger.warning(
                         "Google Photos Backup Stalled: restart UI sequence"
                     )

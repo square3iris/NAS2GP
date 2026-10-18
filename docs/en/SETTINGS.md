@@ -157,7 +157,7 @@ finish uploading to the Google Photos cloud.
 | `MIN_BACKUP_THROUGHPUT_MBPS` | float | `2.0` | Conservative assumed speed (MB/s) used to estimate the no-progress timeout from the batch size. `size / this value` becomes the lower bound of `BACKUP_TIMEOUT` (`0` disables). Prevents cutting off a single large file (e.g. a 4 GB video) whose remaining count never decreases |
 | `BACKUP_CHECK_INTERVAL` | int | `8` | Interval to read on-screen text (UIAutomator dump) (seconds) |
 | `MIN_ACCEPT_ELAPSED_SECONDS` | int | `15` | Minimum elapsed time before completion can be accepted (seconds) |
-| `BACKUP_STALLED_LIMIT` | int | `15` | Consecutive count that defines "no progress" |
+| `BACKUP_STALLED_LIMIT` | int | `15` | Stall-restart threshold (consecutive polls). If "backing up" persists for this many polls, Google Photos is restarted to recover (actual time depends on `BACKUP_CHECK_INTERVAL`; e.g. 15 polls x 8s ~ 120s). Relaxed automatically in proportion to the no-progress timeout for large files (`0` disables) |
 | `CYCLE_GP_BEFORE_WAIT` | bool | `true` | Restart Google Photos right after transfer so it detects new photos (Stop->Scan->Start before waiting) |
 | `RESTART_PHOTOS_AFTER_PUSH` | bool | `false` | Restart Google Photos only when a backup fails |
 
@@ -332,6 +332,7 @@ The fastest approach is to watch the accept status live on the **Console** page.
 - Too slow: decrease `MIN_ACCEPT_ELAPSED_SECONDS`
 - Too many false positives (too early): increase `MIN_ACCEPT_ELAPSED_SECONDS` / adjust `BACKUP_ABSOLUTE_MAX_SECONDS`
 - Cut off on a large file (e.g. a single multi-GB video): lower `MIN_BACKUP_THROUGHPUT_MBPS` (extends the timeout) / increase `BACKUP_TIMEOUT`
+- Google Photos restarting repeatedly on a large file (stall-restart false trigger): increase `BACKUP_STALLED_LIMIT`. When the no-progress timeout is extended it is relaxed proportionally, so the default is usually fine
 
 ### 6.5 Long unattended runs (guarding against the phone's battery running out)
 

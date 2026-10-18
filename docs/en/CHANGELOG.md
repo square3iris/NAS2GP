@@ -53,6 +53,17 @@ removed desktop-GUI era is compressed).
 - **Related i18n keys (v1.11.0)**: added `settings.label.min_throughput` / `settings.tooltip.min_throughput` / `bw.log.idle_timeout_scaled` to `lang/ja.py` and `lang/en.py`.
 - **Version bump (v1.11.0)**: `settings.APP_VERSION` changed from `1.10.0` to `1.11.0`.
 
+### v1.11.1 — Proportional stall-restart relaxation and timeout display/label fixes
+
+- **Proportional relaxation of stall-restart (v1.11.1)**: for large files the "stall-restart" threshold is now relaxed in proportion, just like the no-progress timeout (added `compute_idle_timeout()` / `compute_stall_limit()` in `backup_waiter.py`). Previously, with a single large file, "backing up" persisting caused Google Photos to be restarted at short intervals. Small batches keep the previous behavior.
+- **`BACKUP_STALLED_LIMIT` semantics fixed (v1.11.1)**: default changed from `150` to `15` (it is the consecutive poll count for stall-restart). The label was corrected to "Stall-Restart Threshold (polls)" and the tooltip to explain the actual time (poll-interval dependent). The UI `min` was also unified to 0 to match the tooltip's "0 disables".
+- **Timeout constants unified (v1.11.1)**: `settings.py` `BACKUP_TIMEOUT` (720 -> 600) and `BACKUP_CHECK_INTERVAL` (3 -> 8) aligned to the config defaults. At runtime the config_ui.json value overrides settings, so behavior is unchanged (the old constants were dead values).
+- **Timeout-related tooltip defaults corrected (v1.11.1)**: `backup_timeout` (720 -> 600) / `backup_check_interval` (30 -> 8) / `min_accept_elapsed` (90 -> 15) / `stalled_limit` (example 3 s -> 8 s) corrected to the effective values.
+- **Effective value in the Phase 5 start log (v1.11.1)**: the timeout shown at batch start now uses the effective value (equivalent to `compute_idle_timeout`) instead of the base value.
+- **Language key integrity fix (v1.11.1)**: renamed `log.端末.*` (9 keys) to `log.device.*` in `lang/ja.py`, clearing the diagnostics warning "Language file integrity (code=ja / miss=9)" (the code already referenced `log.device.*`).
+- **Stats page description cleaned up (v1.11.1)**: removed the description about the file list (already moved to the Management page) from `web.stats.desc`, leaving only the explanation of the charts.
+- **Version bump (v1.11.1)**: `settings.APP_VERSION` changed from `1.11.0` to `1.11.1`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.
