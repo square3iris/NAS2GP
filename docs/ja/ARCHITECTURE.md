@@ -223,7 +223,8 @@ POST /api/maintenance/factory_reset   工場出荷時リセット
 GET  /api/device/workdir              端末 作業フォルダ 取得
 POST /api/device/workdir              端末 作業フォルダ 変更 (DCIM 配下 のみ, config 保存)
 GET  /api/device/browse               DCIM 配下 サブフォルダ 一覧 (?path=)
-POST /api/device/delete_uploaded      NAS2GP が 転送 し た ファイル のみ 削除 (安全版 / GP 完了 済み が 対象, v1.13.5)
+GET  /api/device/delete_uploaded/preview  作業フォルダ 配下 の 件数 ・ 容量 を 実測 (v1.13.6)
+POST /api/device/delete_uploaded      作業フォルダ の 中身 を 全削除 (条件なし / フォルダ は 残す, v1.13.6)
 GET  /api/device/requeue_incomplete/preview  未 完了 (転送 / GP / 削除 の いずれ か) の 件数 ・ 容量 を 返す (v1.13.5)
 POST /api/device/requeue_incomplete   未 完了 の 行 を 再 転送 対象 へ 戻す (3 工程 完了 済み は 除外, v1.13.5)
 POST /api/device/reconcile_delete     削除 状態 の 整合 (端末 に 実在 する の に DB が DONE の 行 を PENDING へ 戻す)

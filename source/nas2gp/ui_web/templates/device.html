@@ -23,7 +23,7 @@
     </div>
 
     <div style="margin-top:16px; border-top:1px solid #334155; padding-top:12px;">
-      <div class="small" style="margin-bottom:8px">{{ tr('web.device.uploaded_note') }}</div>
+      <div id="px-del-note" class="small" style="margin-bottom:8px"></div>
       <button class="warnb" onclick="callDeleteUploaded()">{{ tr('web.device.delete_uploaded') }}</button>
     </div>
 
@@ -74,19 +74,32 @@ async function loadWorkdir(){
   try {
     const r = await fetch('/api/device/workdir').then(x => x.json());
     if (!r.ok) {
-      _pxWorkDir = '';
+      _pxWorkDir = r.path || '';
       $('px-current').innerHTML = `${t('web.device.workdir_current')} <span style="color:var(--err)">${esc(r.error || t('web.device.fetch_fail'))}</span>`;
       $('px-free').textContent = '--';
+      _pxDelNote();
       return;
     }
     _pxWorkDir = r.path || '';
     $('px-current').innerHTML = `${t('web.device.workdir_current')} <b style="color:var(--ok)">${esc(_pxWorkDir)}</b>`;
     $('px-free').innerHTML = `${t('web.device.free')}<b style="color:var(--ok)">${Number(r.free_gb || 0).toFixed(2)} GB</b>`;
+    _pxDelNote();
   } catch(e){
     _pxWorkDir = '';
     $('px-current').textContent = tf('web.device.fetch_fail', {err: e});
     $('px-free').textContent = '--';
+    _pxDelNote();
   }
+}
+
+// 削除ボタン の 説明 に 現在 の 作業フォルダ 名 を 埋め込む (v1.13.6)。
+// Inject the current working folder name into the delete button's note (v1.13.6).
+function _pxDelNote(){
+  const el = $('px-del-note');
+  if (!el) return;
+  el.innerHTML = tf('web.device.uploaded_note', {
+    folder: '<b style="color:var(--accent)">' + esc(_pxWorkDir || '--') + '</b>'
+  });
 }
 
 function toggleBrowser(){
@@ -161,26 +174,9 @@ async function setWorkdir(path){
   }
 }
 
-function _fmtDeleteResult(title, j){
-  j = j || {};
-  const targets = Array.isArray(j.targets) ? j.targets : [];
-  const lines = [];
-  lines.push(j.ok === true ? t('web.device.del.ok') : t('web.device.del.ng'));
-  lines.push(tf('web.device.del.targets', {targets: (targets.length ? targets.join(', ') : t('web.device.del.none'))}));
-  lines.push(tf('web.device.del.result', {ok: j.ok_cnt||0, err: j.err_cnt||0, total: j.total||0}));
-  if (j.not_found_cnt) lines.push(tf('web.device.del.not_found', {n: j.not_found_cnt}));
-  if (typeof j.free_gb_after === 'number') lines.push(tf('web.device.del.free_after', {gb: j.free_gb_after.toFixed(2)}));
-  if (j.error) lines.push(tf('web.device.del.error', {err: j.error}));
-  if (Array.isArray(j.logs) && j.logs.length) {
-    lines.push('');
-    lines.push(t('web.device.del.detail'));
-    lines.push(j.logs.join('\n'));
-  }
-  alert(title + '\n\n' + lines.join('\n'));
-}
-
 async function callDeleteUploaded(){
   _pxMsg('');
+  if (!_pxWorkDir) { _pxMsg(tf('web.device.uploaded_fail', {err: t('web.device.fetch_fail')}), 'var(--err)'); return; }
   let pv = null;
   try {
     const r = await fetch('/api/device/delete_uploaded/preview');
@@ -190,25 +186,36 @@ async function callDeleteUploaded(){
       return;
     }
     pv = await r.json();
-  } catch(e){ alert(tf('web.device.uploaded_fail', {err: e})); return; }
+  } catch(e){ _pxMsg(tf('web.device.uploaded_fail', {err: e}), 'var(--err)'); return; }
   if (!pv || pv.ok !== true) {
-    alert(tf('web.device.uploaded_fail', {err: (pv && pv.error) || ''}));
+    _pxMsg(tf('web.device.uploaded_fail', {err: (pv && pv.error) || ''}), 'var(--err)');
     return;
   }
+  const folder = pv.path || _pxWorkDir;
   if (!pv.total) {
-    _pxMsg(t('web.device.uploaded_none'), 'var(--sub)');
+    _pxMsg(tf('web.device.uploaded_none', {folder: folder}), 'var(--sub)');
     return;
   }
   const msg = tf('web.device.confirm_uploaded_detail', {
-    total: pv.total, gb: _pxGb(pv.bytes), excluded: pv.excluded, excluded_gb: _pxGb(pv.excluded_bytes)
+    folder: folder, total: pv.total, gb: _pxGb(pv.bytes)
   });
   if (!confirm(msg)) return;
+  _pxMsg(t('web.device.uploaded_running'), 'var(--sub)');
   try {
     const r = await fetch('/api/device/delete_uploaded', { method:'POST' });
     const j = await r.json();
-    _fmtDeleteResult(t('web.device.uploaded_title'), j);
+    if (j.ok !== true) {
+      _pxMsg(tf('web.device.uploaded_fail', {err: j.error || ''}), 'var(--err)');
+      return;
+    }
+    let out = tf('web.device.uploaded_result', {
+      folder: j.path || folder, total: j.total || 0,
+      gb: _pxGb(j.bytes), free: Number(j.free_gb_after || 0).toFixed(2)
+    });
+    if (j.db_reconciled) out += ' ' + tf('web.device.uploaded_reconciled', {n: j.db_reconciled});
+    _pxMsg(out, 'var(--ok)');
     loadWorkdir();
-  } catch(e){ alert(tf('web.device.uploaded_fail', {err: e})); }
+  } catch(e){ _pxMsg(tf('web.device.uploaded_fail', {err: e}), 'var(--err)'); }
 }
 
 function _fmtDcimResult(j){

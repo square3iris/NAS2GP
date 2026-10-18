@@ -139,6 +139,16 @@
 - **状態の復旧 を 管理ページ へ 移設 (v1.13.5)**: 端末ページ の 「削除状態を整合」 と 「♻️ 未完了を再転送対象に戻す」 を 、 管理ページ の 「♻️ 状態の復旧」 カード (データ リセット の 上) へ 移設 し まし た。 端末ページ は 端末 へ の 実 操作 (転送済みファイル削除 / DCIM 配下 全削除) に 絞っ て い ます。 新 i18n キー `web.mgmt.repair.title` / `web.mgmt.repair.desc`。
 - **バージョン更新 (v1.13.5)**: `settings.APP_VERSION` を `1.13.4` → `1.13.5` に 変更。
 
+### v1.13.6 — 端末ページ の 削除 を 「作業フォルダ の 中身 を 全削除」 へ 変更
+
+- **作業フォルダ の 中身 を 全削除 (v1.13.6)**: 端末ページ の 削除 ボタン を 「NAS2GP が 転送 し た ファイル のみ 削除 (条件付き)」 から 「🧹 作業フォルダ の 中身 を 全削除」 へ 変更。 条件 は 付け ず 、 現在 の 作業フォルダ 配下 の ファイル / サブフォルダ を すべて 削除 し ます (フォルダ 自体 は 残す)。 Google Photos の バックアップ が 未 完了 の ファイル も 含め て 消え ます。 破壊的 操作 の ため 、 同意 ゲート と 事前 確認 ダイアログ (件数 ・ 容量 の 実測 表示) を 維持。 旧 仕様 (転送済み & GP 完了 済み のみ) では 、 同期 フロー が GP 完了 直後 に 端末 削除 を 自動 実行 する ため 手動 削除 対象 が 普段 ほぼ 残ら ず 、 「削除 対象 は あり ませ ん」 と 表示 さ れ て い まし た。
+- **実測 プレビュー API (v1.13.6)**: `GET /api/device/delete_uploaded/preview` を 追加 し 、 削除 前 に 作業フォルダ 配下 の 件数 ・ 容量 を 端末 から 実測 し て 返す (`Device.measure_folder()`)。 DB の 状態 は 条件 に し ませ ん。
+- **フォルダ 全削除 の 実装 (v1.13.6)**: `Device.delete_folder_contents()` を 追加。 `find ... -mindepth 1 -maxdepth 1 -exec rm -rf {} \;` で 直下 の 中身 のみ 削除 し 、 フォルダ 自体 は 残し ます (`/sdcard` 配下 のみ 許可)。 削除 後 は 転送 済み 行 の 削除 状態 を `DONE` へ 整合 (`mark_all_phone_delete_pending_done()`)。
+- **説明 文 の 動的 化 と アイコン 変更 (v1.13.6)**: 削除 ボタン の 説明 に 現在 の 作業フォルダ 名 を 動的 表示。 ボタン の アイコン を チェックボックス に 見える 🗑️ から 🧹 (ほうき) へ 変更。
+- **関連 i18n キー (v1.13.6)**: `web.device.uploaded_note` / `uploaded_none` / `confirm_uploaded_detail` を `{folder}` 対応 に 変更 (`{excluded}` / `{excluded_gb}` を 削除)。 `web.device.uploaded_running` / `uploaded_result` / `uploaded_reconciled` を 追加。 `web.device.delete_uploaded` を 「🧹 作業フォルダ の 中身 を 全削除」 へ 変更。
+- **ドキュメント (v1.13.6)**: `docs/{ja,en}/ARCHITECTURE.md` の `delete_uploaded` 記述 を 更新。
+- **バージョン更新 (v1.13.6)**: `settings.APP_VERSION` を `1.13.5` → `1.13.6` に 変更。
+
 ### v1.9.0 — macOS / Linux 対応 (ベストエフォート)
 
 - **macOS / Linux 対応 (v1.9.0)**: これ まで Windows 専用 だっ た 構成 を macOS / Linux で も 起動 ・ 実行 でき る よう に し た (ベストエフォート)。実機 の macOS で の 動作 確認 は 未 実施。

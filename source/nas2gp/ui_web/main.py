@@ -1230,34 +1230,26 @@ def create_app() -> FastAPI:
 
     @app.get("/api/device/delete_uploaded/preview")
     async def api_device_delete_uploaded_preview():
-        """v1.11.3 / v1.13.5: 「NAS2GP が 転送 し た ファイル のみ 削除」 の 事前 確認 用。
-        削除 対象 (転送 完了 ・ Google Photos 完了 済み ・ 未 削除) の 件数 と 容量 、
-        および 対象 から 除外 し た 「GP 未 完了」 の 件数 ・ 容量 を 返す (v1.13.5 で
-        未 完了 分 は 削除 対象 から 除外)。
+        """v1.13.6: 「作業フォルダの中身を削除」の事前確認用。現在の作業フォルダ配下の
+        ファイル数と合計サイズを端末から実測して返す。DB の状態は条件にしない
+        (フォルダに実在するものがすべて対象)。
 
-        v1.11.3 / v1.13.5: preview for the "delete NAS2GP-transferred files" button;
-        returns the target count/size (transferred, GP done, not yet deleted) and the
-        count/size of the excluded GP-unfinished files.
+        v1.13.6: preview for "delete the working folder contents". Measures the file
+        count and total size under the current working folder on the device. DB state
+        is not used as a condition (everything physically present is a target).
         """
         _blk = _consent_block()
         if _blk:
             return JSONResponse(status_code=409, content=_blk)
-        result = {"ok": False, "total": 0, "bytes": 0, "excluded": 0,
-                  "excluded_bytes": 0, "error": None}
+        result = {"ok": False, "path": "", "total": 0, "bytes": 0, "error": None}
         try:
-            from nas2gp.storage.db import Database as _DbP
-            _db = _DbP()
-            try:
-                _sum = _db.get_phone_delete_summary() or {}
-            finally:
-                try:
-                    _db.close()
-                except Exception:
-                    pass
-            result["total"] = int(_sum.get("total") or 0)
-            result["bytes"] = int(_sum.get("bytes") or 0)
-            result["excluded"] = int(_sum.get("excluded") or 0)
-            result["excluded_bytes"] = int(_sum.get("excluded_bytes") or 0)
+            from nas2gp.core import settings as _s_dp
+            from nas2gp.device.device import Device as _PxP
+            result["path"] = str(getattr(_s_dp, "DEVICE_WORK_DIR", "") or "")
+            px = _PxP()
+            _cnt, _bytes = px.measure_folder(result["path"])
+            result["total"] = int(_cnt or 0)
+            result["bytes"] = int(_bytes or 0)
             result["ok"] = True
         except Exception as e:
             result["error"] = f"{type(e).__name__}: {e}"
@@ -1266,108 +1258,76 @@ def create_app() -> FastAPI:
     @app.post("/api/device/delete_uploaded")
     async def api_device_delete_uploaded():
         """
-        v1.11.3 / v1.13.5: NAS2GP が 端末 へ 転送 し (phone_transfer_state='DONE')、
-        Google Photos の バックアップ も 完了 済み (google_photos_state='DONE') で 、
-        まだ 端末 から 削除 さ れ て い ない もの を まとめて 削除 する 。 実在 確認 つき で
-        削除 し 、 実際 に 消せ た もの だけ DB を DONE に 整合 さ せる 。 個人 の 写真
-        (NAS2GP 管理 外) は 対象 に し ない 。
-        v1.13.5: GP 未 完了 の ファイル は 対象 から 除外 する (未 バックアップ の まま
-        端末 から 消す と Google Photos に 入ら ない ため)。 未 完了 分 は
-        「未 完了 を 再 転送 対象 に 戻す」 で やり直す 。
+        v1.13.6: 現在の作業フォルダ配下をすべて削除する (フォルダ自体は残す)。条件は
+        付けず、Google Photos 未完了のファイルも含めて消す。削除後は転送済みの行の
+        削除状態を DONE へ整合させる。破壊的な操作のため、同意ゲートで保護する。
 
-        v1.11.3 / v1.13.5: Deletes files NAS2GP transferred to the device and already
-        backed up to Google Photos, but not yet removed. Verifies existence, and
-        reconciles to DONE only the files actually removed. Personal photos outside
-        NAS2GP are never touched. v1.13.5: GP-unfinished files are excluded.
+        v1.13.6: Deletes everything under the current working folder, keeping the folder
+        itself. No conditions: files not yet backed up to Google Photos are also removed.
+        Afterwards the delete state of transferred rows is reconciled to DONE. This is
+        destructive, so it is protected by the consent gate.
         """
         _blk = _consent_block()
         if _blk:
             return JSONResponse(status_code=409, content=_blk)
-        result = {"ok": False, "total": 0, "ok_cnt": 0, "err_cnt": 0, "not_found_cnt": 0,
-                  "targets": [], "logs": [], "error": None}
+        result = {"ok": False, "path": "", "total": 0, "bytes": 0,
+                  "db_reconciled": 0, "free_gb_after": None, "logs": [], "error": None}
         try:
+            from nas2gp.core import settings as _s_dp2
             from nas2gp.device.device import Device as _Px2
             from nas2gp.core.logger import Logger as _Lg2
             from nas2gp.storage.db import Database as _Db2
-            px2 = _Px2()
-            _db_q = _Db2()
-            try:
-                _pending = list(_db_q.get_phone_transferred_files() or [])
-            finally:
-                try:
-                    _db_q.close()
-                except Exception:
-                    pass
-            _paths_by_name = {}
-            for (_p, fn) in _pending:
-                if fn:
-                    _paths_by_name[fn] = _p
-            targets = [fn for (_p, fn) in _pending if fn]
-            result["targets"] = targets[:10]
-            result["total"] = len(targets)
-            if not targets:
-                result["ok"] = True
-                result["error"] = "削除 対象 (NAS2GP が 転送 し た ファイル) は あり ませ ん 。"
+            result["path"] = str(getattr(_s_dp2, "DEVICE_WORK_DIR", "") or "")
+            if not result["path"] or result["path"].rstrip("/") == "/sdcard":
+                result["error"] = "作業フォルダ が 未設定 です 。"
                 return result
-            _Lg2.info(f"[Web][転送ファイル削除] 開始 件数={len(targets)}")
+            px2 = _Px2()
             try:
-                _ens = px2.ensure_adb_alive(aggressive=True, shell_probe=True, publish_unrecoverable=True)
-                result["logs"].append(f"ensure_adb_alive → {_ens}")
-            except Exception as e_ensure:
-                result["logs"].append(f"ensure_adb_alive exception (続行): {e_ensure}")
-            # v1.11.3: 実在 確認 つき で 一括 削除 (削除 / 存在 せず / 失敗 に 分類)。
+                _cnt, _bytes = px2.measure_folder(result["path"])
+                result["total"] = int(_cnt or 0)
+                result["bytes"] = int(_bytes or 0)
+            except Exception:
+                pass
+            _Lg2.info(f"[Web][作業フォルダ全削除] 開始 対象={result['path']} 件数={result['total']}")
+            _ok = False
             try:
-                _removed, _absent, _failed = px2.delete_files_detailed(targets)
-            except Exception as _e_bulk:
-                result["logs"].append(f"削除 例外: {_e_bulk}")
-                _removed, _absent, _failed = [], [], list(targets)
-            ok_cnt = len(_removed)
-            not_found_cnt = len(_absent)
-            err_cnt = len(_failed)
-            for fn in _removed:
-                result["logs"].append(f"削除: {fn}")
-            for fn in _absent:
-                result["logs"].append(f"存在 せず (削除 済み 扱い): {fn}")
-            for fn in _failed:
-                result["logs"].append(f"失敗: {fn}")
-            _removed_set = set(_removed)
-            _absent_set = set(_absent)
-            # 実際 に 端末 から 消え た もの (+ 既に 端末 に 無 い もの) を DB DONE に 整合 さ せ る 。
-            # Reconcile to DONE the files actually removed from the device (and those
-            # already absent on the device).
+                _ok = bool(px2.delete_folder_contents(result["path"]))
+            except Exception as _e_del:
+                result["logs"].append(f"削除 例外: {_e_del}")
+            if not _ok:
+                result["error"] = "削除 に 失敗 し まし た (ADB 接続 を 確認 し て ください)。"
+                return result
+            result["ok"] = True
+            # 転送 済み 行 の 削除 状態 を DONE へ 整合 さ せる (存在 し ない ファイル へ の
+            # 空振り 再試行 を 防ぐ)。
+            # Reconcile the delete state of transferred rows to DONE (avoids retrying
+            # files that no longer exist).
             try:
-                _done_names = _removed_set | _absent_set
-                if _done_names:
-                    _paths = [_paths_by_name[fn] for fn in _done_names if fn in _paths_by_name]
-                    _db_rw = _Db2()
+                _db2 = _Db2()
+                try:
+                    _fixed = int(_db2.mark_all_phone_delete_pending_done() or 0)
+                    if _fixed:
+                        _db2.commit()
+                    result["db_reconciled"] = _fixed
+                finally:
                     try:
-                        _fixed = int(_db_rw.mark_phone_delete_done_bulk(_paths) or 0)
-                        if _fixed:
-                            _db_rw.commit()
-                        result["db_delete_reconciled"] = _fixed
-                    finally:
-                        try:
-                            _db_rw.close()
-                        except Exception:
-                            pass
+                        _db2.close()
+                    except Exception:
+                        pass
             except Exception as _e_db:
                 result["logs"].append(f"DB 整合 スキップ: {_e_db}")
-            result["ok_cnt"] = ok_cnt
-            result["err_cnt"] = err_cnt
-            result["not_found_cnt"] = not_found_cnt
-            result["ok"] = err_cnt == 0
             try:
                 result["free_gb_after"] = float(px2.get_storage_root_free_gb() or 0.0)
             except Exception:
-                result["free_gb_after"] = 0.0
+                result["free_gb_after"] = None
             _Lg2.success(
-                f"[Web][転送ファイル削除] 完了 成功={ok_cnt} 存在せず={not_found_cnt} 失敗={err_cnt} / 合計={len(targets)}"
+                f"[Web][作業フォルダ全削除] 完了 件数={result['total']} DB整合={result['db_reconciled']}"
             )
         except Exception as e:
             result["error"] = f"{type(e).__name__}: {e}"
             try:
                 from nas2gp.core.logger import Logger as _LgE
-                _LgE.error(f"[Web][転送ファイル削除] 全体 例外: {result['error']}")
+                _LgE.error(f"[Web][作業フォルダ全削除] 全体 例外: {result['error']}")
             except Exception:
                 pass
         return result

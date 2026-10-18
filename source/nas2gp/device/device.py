@@ -603,6 +603,73 @@ class Device:
         except Exception:
             return False
 
+    def measure_folder(self, remote_path):
+        """v1.13.6: 指定 フォルダ 配下 の ファイル 数 と 合計 サイズ (バイト) を 端末 から
+        実測 して 返す (作業フォルダ 全削除 の 事前 確認 表示 用)。/sdcard 配下 のみ。
+        戻り値: (count, bytes) 。 取得 でき なかっ た 場合 は (0, 0) 。
+
+        v1.13.6: Measures the file count and total size (bytes) under the given folder
+        on the device, for the pre-wipe confirmation. Only paths under /sdcard.
+        """
+        safe = str(remote_path or "").strip().rstrip("/")
+        if not safe or not safe.startswith("/sdcard"):
+            return 0, 0
+        try:
+            if not ADB.has_device():
+                return 0, 0
+        except Exception:
+            return 0, 0
+        quoted = _sh_quote(safe)
+        script = (
+            f"find {quoted} -type f 2>/dev/null | wc -l; "
+            f"du -sk {quoted} 2>/dev/null | cut -f1"
+        )
+        try:
+            out = ADB.shell_output("sh", "-c", script) or ""
+        except Exception:
+            return 0, 0
+        lines = [ln.strip() for ln in str(out).splitlines() if ln.strip()]
+        count, kb = 0, 0
+        if len(lines) >= 1:
+            try:
+                count = int(lines[0])
+            except Exception:
+                count = 0
+        if len(lines) >= 2:
+            try:
+                kb = int(str(lines[1]).split()[0])
+            except Exception:
+                kb = 0
+        return count, kb * 1024
+
+    def delete_folder_contents(self, remote_path):
+        """v1.13.6: 指定 フォルダ 配下 の ファイル / サブフォルダ を すべて 削除 する
+        (フォルダ 自体 は 残す)。Google Photos の バックアップ 未 完了 の 写真 も 消える
+        ため 、 ユーザー の 明示 同意 が 前提 。/sdcard 配下 のみ 許可 する。
+
+        v1.13.6: Deletes everything under the given folder (keeping the folder itself).
+        This also erases photos not yet backed up to Google Photos, so it requires the
+        user's explicit consent. Only paths under /sdcard are allowed.
+        """
+        safe = str(remote_path or "").strip().rstrip("/")
+        if not safe or not safe.startswith("/sdcard") or safe == "/sdcard":
+            return False
+        try:
+            if not self.ensure_adb_alive(aggressive=True, shell_probe=True, publish_unrecoverable=False):
+                return False
+        except Exception:
+            pass
+        quoted = _sh_quote(safe)
+        # 中身 だけ を 消す (-mindepth 1): 作業フォルダ 自体 は 残す 。
+        # Delete only the contents (-mindepth 1): keep the working folder itself.
+        try:
+            return ADB.shell(
+                "sh", "-c",
+                f"find {quoted} -mindepth 1 -maxdepth 1 -exec rm -rf {{}} \\;",
+            )
+        except Exception:
+            return False
+
     def list_subfolders(self, base_path="/sdcard"):
         """任意 の 端末 パス 直下 の サブフォルダ 一覧 を 返す (作業フォルダ 選択 用)。
         /sdcard 配下 のみ 許可 する。戻り値: [ {"name": str, "path": str} ]

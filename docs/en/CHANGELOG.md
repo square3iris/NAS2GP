@@ -140,6 +140,16 @@ removed desktop-GUI era is compressed).
 - **State repair moved to the Management page (v1.13.5)**: moved "Reconcile delete state" and "Re-queue unfinished files" from the device page to the new "♻️ State repair" card on the Management page (above Data reset). The device page is now limited to real device operations (delete transferred files / delete everything under DCIM). New i18n keys `web.mgmt.repair.title` / `web.mgmt.repair.desc`.
 - **Version bump (v1.13.5)**: `settings.APP_VERSION` changed from `1.13.4` to `1.13.5`.
 
+### v1.13.6 — Device page delete changed to "delete everything inside the working folder"
+
+- **Delete everything inside the working folder (v1.13.6)**: the device page delete button changed from "Delete only files transferred by NAS2GP (conditional)" to "🧹 Delete everything inside the working folder". No conditions: everything (files and subfolders) under the current working folder is removed, while the folder itself is kept. Files whose Google Photos backup is not yet finished are also deleted. Because this is destructive, the consent gate and the pre-delete confirmation dialog (with measured count/size) are retained. Under the old spec (transferred & GP-done only) the sync flow deletes from the device right after the GP backup finishes, so a manual target almost never remains and the message "there are no files to delete" appeared.
+- **Measured preview API (v1.13.6)**: added `GET /api/device/delete_uploaded/preview`, which measures the file count and total size under the working folder on the device before deleting (`Device.measure_folder()`). DB state is not used as a condition.
+- **Folder-contents delete implementation (v1.13.6)**: added `Device.delete_folder_contents()`. It removes only the direct children with `find ... -mindepth 1 -maxdepth 1 -exec rm -rf {} \;`, keeping the folder itself (allowed only under `/sdcard`). Afterwards the delete state of transferred rows is reconciled to `DONE` (`mark_all_phone_delete_pending_done()`).
+- **Dynamic note and icon change (v1.13.6)**: the delete button's note now shows the current working folder name dynamically. The button icon changed from 🗑️ (which looked like a checkbox) to 🧹 (broom).
+- **Related i18n keys (v1.13.6)**: `web.device.uploaded_note` / `uploaded_none` / `confirm_uploaded_detail` now support `{folder}` (`{excluded}` / `{excluded_gb}` removed). Added `web.device.uploaded_running` / `uploaded_result` / `uploaded_reconciled`. `web.device.delete_uploaded` changed to "🧹 Delete everything inside the working folder".
+- **Docs (v1.13.6)**: updated the `delete_uploaded` description in `docs/{ja,en}/ARCHITECTURE.md`.
+- **Version bump (v1.13.6)**: `settings.APP_VERSION` changed from `1.13.5` to `1.13.6`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.

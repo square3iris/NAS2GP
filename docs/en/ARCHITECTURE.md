@@ -224,7 +224,8 @@ POST /api/maintenance/factory_reset   factory reset
 GET  /api/device/workdir              get device working folder
 POST /api/device/workdir              change device working folder (DCIM-only, saved to config)
 GET  /api/device/browse               list DCIM subfolders (?path=)
-POST /api/device/delete_uploaded      delete only NAS2GP-transferred files (safe; GP-done files only, v1.13.5)
+GET  /api/device/delete_uploaded/preview  measure count/size under the working folder (v1.13.6)
+POST /api/device/delete_uploaded      delete everything inside the working folder (no conditions; folder kept, v1.13.6)
 GET  /api/device/requeue_incomplete/preview  count/size of unfinished rows (any of transfer / GP / delete) (v1.13.5)
 POST /api/device/requeue_incomplete   re-queue unfinished rows (fully-done rows excluded, v1.13.5)
 POST /api/device/reconcile_delete     reconcile delete state (re-queue rows recorded as DONE that still exist on the device)
