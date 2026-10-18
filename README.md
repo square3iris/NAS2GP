@@ -149,7 +149,7 @@ NAS2GP/
 - SMB / NAS のセッション維持処理は Windows 専用のため、macOS / Linux ではスキップされます。
 - Google Photos の「バックアップ完了」判定は端末の画面表示（UI ダンプ）に依存しているため、Google Photos アプリの仕様変更により判定できなくなる可能性があります。
 - 長時間運用時の切断・電池切れなどへの自動復旧を実装していますが、完全ではありません。復旧できない場合は安全に停止する挙動をとります。
-- 既知の不具合は `docs/ja/CHANGELOG.md` および `docs/ja/ROADMAP_AND_TODO.md` に随時記載します。
+- 既知の不具合は GitHub のリポジトリ内の `docs/ja/CHANGELOG.md` および `docs/ja/ROADMAP_AND_TODO.md` に随時記載します（配布ZIPには含まれません）。
 
 ### ライセンス
 
@@ -296,7 +296,7 @@ NAS2GP/
 - The SMB / NAS session keep-alive is Windows-only and is skipped on macOS / Linux.
 - The "backup complete" detection relies on the Google Photos screen (UI dump), so a Google Photos UI change may break the detection.
 - Automatic recovery from disconnects / battery depletion during long runs is implemented, but it is not perfect; when recovery is not possible the tool stops safely.
-- Known issues are recorded in `docs/en/CHANGELOG.md` and `docs/en/ROADMAP_AND_TODO.md`.
+- Known issues are recorded in `docs/en/CHANGELOG.md` and `docs/en/ROADMAP_AND_TODO.md` in the GitHub repository (they are not included in the distribution ZIP).
 
 ### License
 
