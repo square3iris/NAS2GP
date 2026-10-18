@@ -42,6 +42,17 @@ removed desktop-GUI era is compressed).
 - **i18n keys added (v1.10.0)**: `web.consent.*` keys added to `lang/ja.py` and `lang/en.py`.
 - **Version bump (v1.10.0)**: `settings.APP_VERSION` changed from `1.9.0` to `1.10.0`. Added `**/config/consent.json` to `.gitignore` (the consent record is per-environment state, so it is not committed).
 
+### v1.11.0 — Delete-all-under-DCIM button (manual recovery)
+
+- **Delete-all-under-DCIM button (v1.11.0)**: added a "🧨 Delete everything under DCIM" button on the device page. As a manual recovery path when the device runs out of space during long runs, it deletes all files/folders under `/sdcard/DCIM` (keeping the DCIM folder itself, so it stays a Google Photos auto-backup target).
+- **Double confirmation (v1.11.0)**: shows a warning that photos not backed up will also be deleted plus two checkboxes; the button stays disabled until both are ticked, and a final confirmation dialog is shown on execution.
+- **Server-side guard (v1.11.0)**: the new API `POST /api/device/delete_dcim_all` returns 409 when consent is missing and does not run without `confirm=true`. After a successful wipe it reconciles all pending deletions to `DONE` to avoid no-op Pre-1 GC retries (`mark_all_phone_delete_pending_done()`).
+- **Device-side implementation (v1.11.0)**: added `device.delete_dcim_all()` (`find /sdcard/DCIM -mindepth 1 -maxdepth 1 -exec rm -rf {} \;`).
+- **Root cause of the out-of-space error (v1.11.0)**: the shortage during long runs was not a batch-processing bug. Phase 5 (backup-complete decision) timed out by mistake, so Phase 6 (device-side delete) kept being skipped and the device never regained free space. With a single multi-GB video (`batch_size=1`) the remaining count never decreases and no ETA is available, so it was misjudged as no-progress.
+- **No-progress timeout improvement (v1.11.0)**: added `MIN_BACKUP_THROUGHPUT_MBPS` (default `2.0` MB/s). `batch bytes / this value` is used as the lower bound of `BACKUP_TIMEOUT` (capped by `BACKUP_ABSOLUTE_MAX_SECONDS`), so a single large file whose remaining count does not decrease is no longer cut off. A 4 GB video now waits up to about 32 minutes (previously 10).
+- **Related i18n keys (v1.11.0)**: added `settings.label.min_throughput` / `settings.tooltip.min_throughput` / `bw.log.idle_timeout_scaled` to `lang/ja.py` and `lang/en.py`.
+- **Version bump (v1.11.0)**: `settings.APP_VERSION` changed from `1.10.0` to `1.11.0`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.

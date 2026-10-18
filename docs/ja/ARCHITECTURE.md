@@ -266,5 +266,5 @@ GET  /progress/sse                    進捗 SSE
 | 安全リセット = OLD rename | `rm` ではなく `_OLD_YYYYMMDD_HHMMSS_` prefix で rename。誤操作から復元可能。 | `core/maintenance.py` |
 | 読み取り専用 DB 参照 | 統計・一覧は `mode=ro` + `busy_timeout` の接続を使う。 | `storage/db_view.py` |
 | 多言語キー整合 | ログ / UI キー追加時は `ja.py` と `en.py` の両方に追加。 | `core/lang/*.py` |
-| 容量不足時の段階復旧 | GC (NAS2GP 転送済みファイル削除) → 再起動 の 2 段階を最大 3 ループ、解決しなければ強制停止。DCIM 全体削除は個人写真保護のため撤廃。 | `uploader/flow.py` 復旧シーケンス |
-| バックアップ待機の二段構え | 無進捗タイムアウトと `BACKUP_ABSOLUTE_MAX_SECONDS` (既定 7200 秒) の絶対上限。 | `worker/backup_waiter.py` |
+| 容量不足時の段階復旧 | GC (NAS2GP 転送済みファイル削除) → 再起動 の 2 段階を最大 3 ループ、解決しなければ強制停止。DCIM 全体削除は自動処理では撤廃（手動の全削除ボタンのみ、二重確認＋同意必須）。 | `uploader/flow.py` 復旧シーケンス |
+| バックアップ待機の二段構え | 無進捗タイムアウト（`MIN_BACKUP_THROUGHPUT_MBPS` によりバッチサイズ比例で下限を延長）と `BACKUP_ABSOLUTE_MAX_SECONDS` (既定 7200 秒) の絶対上限。 | `worker/backup_waiter.py` |

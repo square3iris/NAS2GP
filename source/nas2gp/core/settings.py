@@ -13,7 +13,7 @@ import os as _os
 # 更新 する とき は この 1 箇所 だけ を 変更 し て ください 。
 # Product version: the single source of truth referenced by the Web UI, OpenAPI (/docs)
 # and diagnostics. When releasing, update only this one place.
-APP_VERSION = "1.10.0"
+APP_VERSION = "1.11.0"
 
 # --------------------------------------------
 # Work Root (v1.7.4 追加: 診断 / リセット など の 「DB ファイル 相対パス 解決」 を 共通化)
@@ -253,6 +253,17 @@ BACKUP_TIMEOUT = 720
 # 絶対上限 (秒): 進捗 の 有無 に 関わら ず これを 超え た ら 打ち切る (無限 待機 防止)。 v1.7.15 追加。
 # Absolute upper limit (sec): aborts once exceeded regardless of progress (prevents infinite wait). Added in v1.7.15.
 BACKUP_ABSOLUTE_MAX_SECONDS = 7200
+
+# v1.11.0: 無進捗 タイムアウト を バッチ サイズ に 比例 さ せる ため の 「保守的 な 想定
+#   バックアップ 速度」(MB/s)。 バッチ 合計 サイズ を この 速度 で 割った 時間 を 無進捗
+#   タイムアウト の 下限 と する こと で 、 残り 枚数 が 減ら ない 単一 大容量 ファイル
+#   (例: 4GB の 動画) の 長時間 バックアップ を 誤って 打ち切ら ない 。
+#   0 以下 に する と この 延長 は 無効 (従来 の 固定 BACKUP_TIMEOUT のみ で 判定)。
+# v1.11.0: Conservative assumed backup speed (MB/s) used to scale the no-progress
+#   timeout with the batch size, so long backups of a single large file (e.g. a 4 GB
+#   video) are not cut off while the remaining count stays flat.
+#   Set to 0 or less to disable this scaling (fixed BACKUP_TIMEOUT only).
+MIN_BACKUP_THROUGHPUT_MBPS = 2.0
 
 # 進捗なし停滞判定時間: 180 -> 150 秒 (v1.5 調整)
 # No-progress stall threshold: 180 -> 150 sec (v1.5 tuning)

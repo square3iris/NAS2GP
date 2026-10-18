@@ -41,6 +41,17 @@
 - **i18n キーの追加 (v1.10.0)**: `web.consent.*` キーを `lang/ja.py` と `lang/en.py` に追加。
 - **バージョン更新 (v1.10.0)**: `settings.APP_VERSION` を `1.9.0` → `1.10.0` に変更。`.gitignore` に `**/config/consent.json` を追加（同意記録は個人環境の状態ファイルのため管理外）。
 
+### v1.11.0 — DCIM 配下 全削除 ボタン (手動 リカバリ 用)
+
+- **DCIM 全削除 ボタン (v1.11.0)**: 端末ページ に「🧨 DCIM 配下 を 全削除」ボタン を 追加。長時間 評価 中 に 端末 が 容量 不足 に なっ た 際 の 手動 リカバリ 手段 と し て 、`/sdcard/DCIM` 配下 の ファイル / フォルダ を すべて 削除 する (DCIM フォルダ 自体 は 残し 、 Google Photos の 自動 バックアップ 対象 を 維持)。
+- **二 重 確認 (v1.11.0)**: 「バックアップ し て い ない 写真 も 削除 さ れ る」 旨 の 警告 と 2 つの チェック ボックス を 表示 し 、 両方 に チェック し ない と ボタン は 押せ ない。 実行 時 に は 最終 確認 の ダイアログ を 挟む。
+- **サーバ 側 ガード (v1.11.0)**: 新 API `POST /api/device/delete_dcim_all` は 未 同意 なら 409、`confirm=true` が 無けれ ば 実行 し ない。 実行 後 は 削除 待ち DB を 一括 で `DONE` に 整合 さ せ 、 次回 Pre-1 GC の 空振り を 防ぐ (`mark_all_phone_delete_pending_done()`)。
+- **端末 側 実装 (v1.11.0)**: `device.delete_dcim_all()` を 追加 (`find /sdcard/DCIM -mindepth 1 -maxdepth 1 -exec rm -rf {} \;`)。
+- **空き容量 エラー の 原因 究明 (v1.11.0)**: 長時間 評価 中 の 容量 不足 は バッチ 処理 の 不具合 で は なかっ た。Phase 5 (バックアップ 完了 判定) が 誤っ て タイムアウト し 、 Phase 6 (端末 側 削除) が スキップ さ れ 続け た ため に 端末 の 空き が 回復 し なかっ た。 特に 4GB 級 の 単一 動画 (`batch_size=1`) で は 残り 枚数 が 減ら ず 、 ETA も 得 られ ない ため 無進捗 と 誤 判定 さ れ て い た。
+- **無進捗 タイムアウト の 改善 (v1.11.0)**: `MIN_BACKUP_THROUGHPUT_MBPS` (既定 `2.0` MB/s) を 追加。 バッチ バイト 数 ÷ この 値 を `BACKUP_TIMEOUT` の 下限 と し て 使い (`BACKUP_ABSOLUTE_MAX_SECONDS` で キャップ)、残り 枚数 が 減ら ない 単一 の 大容量 ファイル を 誤っ て 打ち切ら ない よう に し た。 4GB の 動画 なら 約 32 分 まで 待機 する (従来 は 10 分)。
+- **関連 i18n キー (v1.11.0)**: `settings.label.min_throughput` / `settings.tooltip.min_throughput` / `bw.log.idle_timeout_scaled` を `lang/ja.py` と `lang/en.py` に追加。
+- **バージョン更新 (v1.11.0)**: `settings.APP_VERSION` を `1.10.0` → `1.11.0` に変更。
+
 ### v1.9.0 — macOS / Linux 対応 (ベストエフォート)
 
 - **macOS / Linux 対応 (v1.9.0)**: これ まで Windows 専用 だっ た 構成 を macOS / Linux で も 起動 ・ 実行 でき る よう に し た (ベストエフォート)。実機 の macOS で の 動作 確認 は 未 実施。

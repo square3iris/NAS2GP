@@ -1129,7 +1129,7 @@ class Uploader:
             batch_status = "DONE"
 
             backup_started_ts = time.time()
-            backup_result = self.worker.wait_backup_complete()
+            backup_result = self.worker.wait_backup_complete(batch_bytes=_batch_total_bytes)
             if isinstance(backup_result, tuple) and len(backup_result) >= 2:
                 backup_ok = bool(backup_result[0])
                 recovery_count = int(backup_result[1])

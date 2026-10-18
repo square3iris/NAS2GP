@@ -70,6 +70,7 @@ WORDS = {
     "bw.recent.line":          "    -> recent = '{recent}'",
     "bw.log.accept_C":         "バックアップ完了 を 受理 (タイムアウト時 の 多数決): 直近 の 完了 {recent_c}/{total} | 経過 {elapsed:.0f}s",
     "bw.log.timeout_false":    "wait_backup_complete timeout FALSE: elapsed={elapsed:.0f}s, idle={idle:.0f}s, recovery_count={rc}, unknown={uc}",
+    "bw.log.idle_timeout_scaled": "無進捗 タイムアウト を バッチ サイズ に 応じ て 延長: {base}s → {scaled}s (バッチ {gb} GB / 想定 {mbps} MB/s)",
     "bw.label.first_c_empty":  " --- ",
 
     # ------------------------------------------------------------
@@ -355,6 +356,8 @@ WORDS = {
     "settings.tooltip.backup_timeout":      "「進捗 が 一切 進ま ない 状態」 が この 秒数 続い た とき に 打ち切る (全体 の 経過 時間 で は ない)。 大容量 ファイル の 転送 中 は 残り 枚数 / ETA の 減少 で 自動 リセット さ れ る。 デフォルト 720。",
     "settings.label.backup_absolute_max":   "バックアップ待機 絶対上限 (秒)",
     "settings.tooltip.backup_absolute_max": "進捗 の 有無 に 関わら ず 、 待機 開始 から この 秒数 を 超え た ら 強制 打ち切り (無限 待機 防止)。 デフォルト 7200 (2時間)。",
+    "settings.label.min_throughput":        "想定バックアップ速度の下限 (MB/s)",
+    "settings.tooltip.min_throughput":      "無進捗タイムアウトを バッチ 合計 サイズ から 見積もる とき の 「保守的 な 想定 速度」。 残り 枚数 が 減ら ない 単一 大容量 ファイル (例: 4GB の 動画) を 誤って 打ち切ら ない よう 、 サイズ ÷ この 速度 を タイムアウト の 下限 に する。 0 で この 延長 は 無効。 デフォルト 2.0。",
     "settings.group.log":                   "ログ表示",
     "settings.group.log.desc":              "画面 (コンソール) に表示するログの量を決めます。普段は「標準」のままで問題ありません。",
     "settings.group.web":                   "Web UI",
@@ -495,6 +498,13 @@ WORDS = {
     "web.device.uploaded_title": "NAS2GP 転送 ファイル 削除結果",
     "web.device.confirm_uploaded": "⚠️ NAS2GP が 転送 し た ファイル を 端末 から 削除 し ます か? (個人 の 写真 は 対象 外 です)",
     "web.device.uploaded_fail": "端末 削除失敗: {err}",
+    "web.device.delete_dcim_all": "🧨 DCIM 配下 を 全削除 (危険)",
+    "web.device.dcim_warn_note": "⚠️ この 操作 は /sdcard/DCIM 配下 の ファイル / フォルダ を すべて 削除 し ます。Google Photos に バックアップ し て い ない 写真 も 消える 可能性 が あり ます。元 に 戻せ ませ ん。",
+    "web.device.dcim_check1": "バックアップ し て い ない 写真 も 削除 さ れ る こと を 理解 し まし た。",
+    "web.device.dcim_check2": "この 操作 の 結果 は 自己 責任 で 行う こと に 同意 し ま す。",
+    "web.device.dcim_confirm_final": "⚠️ 最後 の 確認 です。/sdcard/DCIM 配下 を すべて 削除 し ます。元 に 戻せ ませ ん。よろしい です か?",
+    "web.device.dcim_title": "DCIM 全削除 結果",
+    "web.device.dcim_reconciled": "削除 待ち DB を DONE に 整合: {n} 件",
 
     # --- 管理画面 (management.html) ---
     "web.mgmt.open.title": "📂 関連フォルダを開く",

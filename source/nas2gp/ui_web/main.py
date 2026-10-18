@@ -545,6 +545,8 @@ def _settings_ui_schema() -> List[Dict[str, Any]]:
              "desc": tr("settings.tooltip.backup_timeout")},
             {"key": "BACKUP_ABSOLUTE_MAX_SECONDS", "label": tr("settings.label.backup_absolute_max"), "type": "int", "min": 60, "max": 86400,
              "desc": tr("settings.tooltip.backup_absolute_max")},
+            {"key": "MIN_BACKUP_THROUGHPUT_MBPS", "label": tr("settings.label.min_throughput"), "type": "float", "min": 0, "max": 50,
+             "desc": tr("settings.tooltip.min_throughput")},
             {"key": "BACKUP_CHECK_INTERVAL", "label": tr("settings.label.backup_check_interval"), "type": "int", "min": 1, "max": 120,
              "desc": tr("settings.tooltip.backup_check_interval")},
             {"key": "MIN_ACCEPT_ELAPSED_SECONDS", "label": tr("settings.label.min_accept_elapsed"), "type": "int", "min": 1, "max": 600,
@@ -1305,6 +1307,76 @@ def create_app() -> FastAPI:
             try:
                 from nas2gp.core.logger import Logger as _LgE
                 _LgE.error(f"[Web][転送ファイル削除] 全体 例外: {result['error']}")
+            except Exception:
+                pass
+        return result
+
+    @app.post("/api/device/delete_dcim_all")
+    async def api_device_delete_dcim_all(payload: Optional[Dict[str, Any]] = None):
+        """
+        v1.11.0: /sdcard/DCIM 配下 を 全 削除 する (個人 の 写真 も 含む)。
+        バックアップ 未 完了 の 写真 も 消える 危険 な 操作 の ため 、 Web UI の
+        二 重 確認 (2 チェック) を 経 た うえ で confirm=true を 受け取る 。
+        未 同意 の 場合 は 409 を 返す 。
+
+        v1.11.0: Wipes everything under /sdcard/DCIM (personal photos included).
+        Because it also erases photos not yet backed up, it requires the Web UI's
+        double confirmation (2 checkboxes) plus an explicit confirm=true. Returns
+        409 when consent is missing.
+        """
+        _blk = _consent_block()
+        if _blk:
+            return JSONResponse(status_code=409, content=_blk)
+        if not bool((payload or {}).get("confirm")):
+            return {"ok": False, "error": "confirm_required",
+                    "message": _tr("web.device.dcim_confirm_final")}
+        result = {"ok": False, "targets": ["/sdcard/DCIM"], "logs": [], "error": None}
+        try:
+            from nas2gp.device.device import Device as _PxD
+            from nas2gp.core.logger import Logger as _LgD
+            from nas2gp.storage.db import Database as _DbD
+            px = _PxD()
+            _LgD.info("[Web][DCIM 全削除] 開始 targets=['/sdcard/DCIM']")
+            try:
+                _ens = px.ensure_adb_alive(aggressive=True, shell_probe=True, publish_unrecoverable=True)
+                result["logs"].append(f"ensure_adb_alive → {_ens}")
+            except Exception as e_ensure:
+                result["logs"].append(f"ensure_adb_alive exception (続行): {e_ensure}")
+            ok = bool(px.delete_dcim_all())
+            result["ok"] = ok
+            result["logs"].append("実行: /sdcard/DCIM 配下 を 全削除" if ok
+                                  else "失敗: /sdcard/DCIM 配下 の 削除 に 失敗")
+            if ok:
+                # DCIM 全削除 に 伴い 、 削除 待ち DB を 一括 で DONE に 整合 さ せ る 。
+                # Reconcile all pending deletions to DONE after the whole-DCIM wipe.
+                try:
+                    _db = _DbD()
+                    try:
+                        fixed = int(_db.mark_all_phone_delete_pending_done() or 0)
+                        if fixed:
+                            _db.commit()
+                        result["db_delete_reconciled"] = fixed
+                        result["logs"].append(f"DB 整合 (削除待ち DONE 化): {fixed} 件")
+                    finally:
+                        try:
+                            _db.close()
+                        except Exception:
+                            pass
+                except Exception as e_db:
+                    result["logs"].append(f"DB 整合 スキップ: {e_db}")
+            try:
+                result["free_gb_after"] = float(px.get_storage_root_free_gb() or 0.0)
+            except Exception:
+                result["free_gb_after"] = 0.0
+            if ok:
+                _LgD.success(f"[Web][DCIM 全削除] 完了: /sdcard/DCIM / 空き {result['free_gb_after']} GB")
+            else:
+                _LgD.error("[Web][DCIM 全削除] 失敗: /sdcard/DCIM")
+        except Exception as e:
+            result["error"] = f"{type(e).__name__}: {e}"
+            try:
+                from nas2gp.core.logger import Logger as _LgE2
+                _LgE2.error(f"[Web][DCIM 全削除] 全体 例外: {result['error']}")
             except Exception:
                 pass
         return result

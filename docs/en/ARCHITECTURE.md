@@ -267,5 +267,5 @@ Top layer (user custom):                 source/config/lang/{lang_code}.json
 | Safe reset = OLD rename | Rename with `_OLD_YYYYMMDD_HHMMSS_` prefix instead of `rm`; recoverable after mistakes. | `core/maintenance.py` |
 | Read-only DB access | Stats/listing use `mode=ro` + `busy_timeout`. | `storage/db_view.py` |
 | i18n key parity | When adding log/UI keys, add to both `ja.py` and `en.py`. | `core/lang/*.py` |
-| Staged recovery on low space | GC (delete NAS2GP-transferred files) -> reboot, up to 3 loops, then force stop if unresolved. Bulk DCIM deletion was removed to protect personal photos. | `uploader/flow.py` recovery |
-| Two-tier backup wait | No-progress timeout plus an absolute cap `BACKUP_ABSOLUTE_MAX_SECONDS` (default 7200s). | `worker/backup_waiter.py` |
+| Staged recovery on low space | GC (delete NAS2GP-transferred files) -> reboot, up to 3 loops, then force stop if unresolved. Bulk DCIM deletion is removed from the automatic path (manual wipe button only, with double confirmation + consent). | `uploader/flow.py` recovery |
+| Two-tier backup wait | No-progress timeout (lower bound extended in proportion to batch size via `MIN_BACKUP_THROUGHPUT_MBPS`) plus an absolute cap `BACKUP_ABSOLUTE_MAX_SECONDS` (default 7200s). | `worker/backup_waiter.py` |

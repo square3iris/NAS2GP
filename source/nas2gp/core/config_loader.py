@@ -40,6 +40,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
 
     "BACKUP_TIMEOUT": 600,
     "BACKUP_ABSOLUTE_MAX_SECONDS": 7200,
+    "MIN_BACKUP_THROUGHPUT_MBPS": 2.0,
     "BACKUP_CHECK_INTERVAL": 8,
     "MIN_ACCEPT_ELAPSED_SECONDS": 15,
     "BACKUP_STALLED_LIMIT": 15,
@@ -119,7 +120,7 @@ def _apply_runtime_settings(cfg: Dict[str, Any], silent: bool = False) -> None:
             except Exception:
                 pass
 
-    _floats = ["DEVICE_STORAGE_MARGIN_GB", "ADB_RECOVER_MIN_INTERVAL_SEC"]
+    _floats = ["DEVICE_STORAGE_MARGIN_GB", "ADB_RECOVER_MIN_INTERVAL_SEC", "MIN_BACKUP_THROUGHPUT_MBPS"]
     for k in _floats:
         if k in cfg:
             try:

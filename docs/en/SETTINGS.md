@@ -66,6 +66,7 @@ On first launch or when loading an older file, missing keys are auto-filled with
   "DISCONNECT_HEARTBEAT_INTERVAL_SEC": 600,
   "BACKUP_TIMEOUT": 600,
   "BACKUP_ABSOLUTE_MAX_SECONDS": 7200,
+  "MIN_BACKUP_THROUGHPUT_MBPS": 2.0,
   "BACKUP_CHECK_INTERVAL": 8,
   "MIN_ACCEPT_ELAPSED_SECONDS": 15,
   "BACKUP_STALLED_LIMIT": 15,
@@ -153,6 +154,7 @@ finish uploading to the Google Photos cloud.
 |---|---|---|---|
 | `BACKUP_TIMEOUT` | int | `600` | Time treated as no-progress (seconds) |
 | `BACKUP_ABSOLUTE_MAX_SECONDS` | int | `7200` | Absolute cap on the backup wait (seconds); the final ceiling for large files |
+| `MIN_BACKUP_THROUGHPUT_MBPS` | float | `2.0` | Conservative assumed speed (MB/s) used to estimate the no-progress timeout from the batch size. `size / this value` becomes the lower bound of `BACKUP_TIMEOUT` (`0` disables). Prevents cutting off a single large file (e.g. a 4 GB video) whose remaining count never decreases |
 | `BACKUP_CHECK_INTERVAL` | int | `8` | Interval to read on-screen text (UIAutomator dump) (seconds) |
 | `MIN_ACCEPT_ELAPSED_SECONDS` | int | `15` | Minimum elapsed time before completion can be accepted (seconds) |
 | `BACKUP_STALLED_LIMIT` | int | `15` | Consecutive count that defines "no progress" |
@@ -329,6 +331,7 @@ The fastest approach is to watch the accept status live on the **Console** page.
 
 - Too slow: decrease `MIN_ACCEPT_ELAPSED_SECONDS`
 - Too many false positives (too early): increase `MIN_ACCEPT_ELAPSED_SECONDS` / adjust `BACKUP_ABSOLUTE_MAX_SECONDS`
+- Cut off on a large file (e.g. a single multi-GB video): lower `MIN_BACKUP_THROUGHPUT_MBPS` (extends the timeout) / increase `BACKUP_TIMEOUT`
 
 ### 6.5 Long unattended runs (guarding against the phone's battery running out)
 

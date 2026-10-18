@@ -66,6 +66,7 @@ NAS2GP/ (リポジトリルート)
   "DISCONNECT_HEARTBEAT_INTERVAL_SEC": 600,
   "BACKUP_TIMEOUT": 600,
   "BACKUP_ABSOLUTE_MAX_SECONDS": 7200,
+  "MIN_BACKUP_THROUGHPUT_MBPS": 2.0,
   "BACKUP_CHECK_INTERVAL": 8,
   "MIN_ACCEPT_ELAPSED_SECONDS": 15,
   "BACKUP_STALLED_LIMIT": 15,
@@ -152,6 +153,7 @@ NAS2GP/ (リポジトリルート)
 |---|---|---|---|
 | `BACKUP_TIMEOUT` | int | `600` | 無進捗とみなすまでの待機時間 (秒) |
 | `BACKUP_ABSOLUTE_MAX_SECONDS` | int | `7200` | バックアップ待機の絶対上限 (秒)。大容量ファイル向けの最終上限 |
+| `MIN_BACKUP_THROUGHPUT_MBPS` | float | `2.0` | 無進捗タイムアウトをバッチサイズから見積もる際の「保守的な想定速度」(MB/s)。サイズ ÷ この値 を `BACKUP_TIMEOUT` の下限として使う (`0` で無効)。残り枚数が減らない単一の大容量ファイル (例: 4GB の動画) を誤って打ち切らない |
 | `BACKUP_CHECK_INTERVAL` | int | `8` | 画面文言 (UIAutomator dump) を確認する間隔 (秒) |
 | `MIN_ACCEPT_ELAPSED_SECONDS` | int | `15` | 完了受理に必要な最低経過時間 (秒) |
 | `BACKUP_STALLED_LIMIT` | int | `15` | 無進捗が連続したと判定する回数 |
@@ -325,6 +327,7 @@ python db_admin.py --help
 
 - 判定が遅い: `MIN_ACCEPT_ELAPSED_SECONDS` を短くする
 - 誤判定が多い (早すぎる): `MIN_ACCEPT_ELAPSED_SECONDS` を増やす / `BACKUP_ABSOLUTE_MAX_SECONDS` を調整する
+- 大容量ファイル (数 GB の動画 1 本など) で打ち切られる: `MIN_BACKUP_THROUGHPUT_MBPS` を下げる (タイムアウトが延長される) / `BACKUP_TIMEOUT` を増やす
 
 ### 6.5 長時間運転 (スマホの電池切れ対策)
 

@@ -58,6 +58,7 @@ WORDS = {
     "bw.recent.line":          "    -> recent = '{recent}'",
     "bw.log.accept_C":         "Backup completion accepted (timeout majority vote): recent complete {recent_c}/{total} | elapsed {elapsed:.0f}s",
     "bw.log.timeout_false":    "wait_backup_complete timeout FALSE: elapsed={elapsed:.0f}s, idle={idle:.0f}s, recovery_count={rc}, unknown={uc}",
+    "bw.log.idle_timeout_scaled": "No-progress timeout scaled to batch size: {base}s -> {scaled}s (batch {gb} GB / assumed {mbps} MB/s)",
     "bw.label.first_c_empty":  " --- ",
 
     "upl.remain_files":   "Remaining files : {n:,}",
@@ -310,6 +311,8 @@ WORDS = {
     "settings.tooltip.backup_timeout":      "Abort when \"no progress at all\" continues for this many seconds (not total elapsed time). During large file transfers, the timer resets automatically whenever the remaining count / ETA decreases. Default 720.",
     "settings.label.backup_absolute_max":   "Backup Wait Absolute Max (seconds)",
     "settings.tooltip.backup_absolute_max": "Force-abort when the wait duration exceeds this many seconds regardless of progress (prevents infinite waiting). Default 7200 (2 hours).",
+    "settings.label.min_throughput":        "Assumed backup speed floor (MB/s)",
+    "settings.tooltip.min_throughput":      "A conservative assumed speed used to derive the no-progress timeout from the batch size. To avoid cutting off a single large file (e.g. a 4 GB video) whose remaining count stays flat, the timeout floor becomes size / this speed. Set 0 to disable. Default 2.0.",
     "settings.group.log":                   "Log display",
     "settings.group.log.desc":              "Decides how much log is shown in the console. Leaving it at \"Standard\" is fine for everyday use.",
     "settings.group.web":                   "Web UI",
@@ -440,6 +443,13 @@ WORDS = {
     "web.device.uploaded_title": "Delete NAS2GP-transferred files result",
     "web.device.confirm_uploaded": "⚠️ Delete the files NAS2GP transferred to the device? (Personal photos are not targeted.)",
     "web.device.uploaded_fail": "Failed to delete on device: {err}",
+    "web.device.delete_dcim_all": "🧨 Delete everything under DCIM (dangerous)",
+    "web.device.dcim_warn_note": "⚠️ This deletes all files and folders under /sdcard/DCIM. Photos not backed up to Google Photos may also be lost. This cannot be undone.",
+    "web.device.dcim_check1": "I understand that photos not yet backed up will also be deleted.",
+    "web.device.dcim_check2": "I agree to perform this operation at my own risk.",
+    "web.device.dcim_confirm_final": "⚠️ Final confirmation. Delete everything under /sdcard/DCIM? This cannot be undone.",
+    "web.device.dcim_title": "Delete-all-under-DCIM result",
+    "web.device.dcim_reconciled": "Reconciled pending deletions to DONE: {n}",
 
     # --- Management screen (management.html) ---
     "web.mgmt.open.title": "📂 Open related folders",

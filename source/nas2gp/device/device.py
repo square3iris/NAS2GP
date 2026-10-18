@@ -478,15 +478,44 @@ class Device:
         return success
 
     # ============================================================
-    # v1.8.0: 作業フォルダ 選択 用 の フォルダ ブラウズ (読み取り 専用)
-    #   v1.8.0 で 危険 な フォルダ 一括 削除 (delete_folder_recursive) と 、 不要 に
-    #   なっ た DCIM フォルダ 一覧 (list_dcim_folders) は 撤廃 し た 。 削除 は
-    #   delete_file() に よ る NAS2GP 転送 ファイル 単位 の 削除 のみ と する 。
-    # v1.8.0: folder browsing for choosing the working folder (read-only).
-    #   Removed the dangerous bulk folder delete (delete_folder_recursive) and the
-    #   now-unneeded DCIM folder list (list_dcim_folders); deletion is limited to
-    #   per-file removal of NAS2GP-transferred files via delete_file().
+    # 端末側 ファイル 削除
+    #   NAS2GP 転送 ファイル 単位 の 削除 (delete_file/delete_files) に 加え 、
+    #   /sdcard/DCIM 配下 を 一括 削除 する delete_dcim_all() を 用意 する 。
+    #   delete_dcim_all() は 個人 の 写真 も 含め て 消える ため 、 Web UI で 二 重 確認
+    #   を 経 た 場合 の み 呼ぶ こと (サーバ 側 でも 同意 + confirm を 検証 する)。
+    # Device-side deletion: per-file removal of NAS2GP-transferred files
+    #   (delete_file/delete_files) plus delete_dcim_all(), which wipes everything
+    #   under /sdcard/DCIM. The latter also erases personal photos, so it must be
+    #   called only after the double confirmation in the Web UI (the server also
+    #   verifies consent + an explicit confirm flag).
     # ============================================================
+
+    def delete_dcim_all(self):
+        """v1.11.0: /sdcard/DCIM 配下 の フォルダ / ファイル を すべて 削除 する
+        (DCIM フォルダ 自体 は 残す)。Google Photos の バックアップ 未 完了 の
+        写真 も 消える ため 、 ユーザー の 明示 同意 が 前提 。
+
+        v1.11.0: Deletes everything under /sdcard/DCIM (keeping the DCIM folder
+        itself). This also erases photos not yet backed up to Google Photos, so it
+        requires the user's explicit consent."""
+        target = "/sdcard/DCIM"
+        try:
+            if not self.ensure_adb_alive(aggressive=True, shell_probe=True, publish_unrecoverable=False):
+                return False
+        except Exception:
+            pass
+        quoted = _sh_quote(target)
+        # 中身 だけ を 消す (-mindepth 1): DCIM フォルダ 自体 は 残し 、 Google Photos の
+        # 自動 バックアップ 対象 を 維持 する 。
+        # Delete only the contents (-mindepth 1): keep the DCIM folder itself so it
+        # remains a Google Photos auto-backup target.
+        try:
+            return ADB.shell(
+                "sh", "-c",
+                f"find {quoted} -mindepth 1 -maxdepth 1 -exec rm -rf {{}} \\;",
+            )
+        except Exception:
+            return False
 
     def list_subfolders(self, base_path="/sdcard"):
         """任意 の 端末 パス 直下 の サブフォルダ 一覧 を 返す (作業フォルダ 選択 用)。

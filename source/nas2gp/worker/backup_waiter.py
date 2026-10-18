@@ -13,6 +13,7 @@ from nas2gp.core.config import MAX_RETRY, RETRY_WAIT
 from nas2gp.core.settings import (
     BACKUP_TIMEOUT,
     BACKUP_ABSOLUTE_MAX_SECONDS,
+    MIN_BACKUP_THROUGHPUT_MBPS,
     BACKUP_STALLED_LIMIT,
     BACKUP_CHECK_INTERVAL,
     MIN_ACCEPT_ELAPSED_SECONDS,
@@ -156,6 +157,7 @@ class UploadWorker:
         self,
         interval=None,
         timeout=None,
+        batch_bytes=None,
     ):
         """
         Googleフォトのバックアップ完了を待機する (v1.5.3 4段階受理ロジック)
@@ -191,6 +193,46 @@ class UploadWorker:
         _abs_max = int(
             getattr(_settings, "BACKUP_ABSOLUTE_MAX_SECONDS", BACKUP_ABSOLUTE_MAX_SECONDS)
         )
+
+        # v1.11.0: 無進捗 タイムアウト を バッチ 合計 サイズ に 比例 さ せ て 延長 する 。
+        #   単一 の 大容量 ファイル で は Google Photos の 「残り 枚数」 が 減ら ず 、
+        #   ETA も 取得 でき ない こと が ある ため 、 固定 の BACKUP_TIMEOUT で は
+        #   誤って 打ち切る (例: 4GB の 動画 が 600 秒 で NG に なる)。
+        #   バッチ 合計 サイズ ÷ 想定 速度 (MIN_BACKUP_THROUGHPUT_MBPS) を 下限 と し 、
+        #   絶対 上限 (BACKUP_ABSOLUTE_MAX_SECONDS) で キャップ する 。
+        # v1.11.0: Scale the no-progress timeout with the batch size. A single large
+        #   file keeps Google Photos' remaining count flat and may expose no ETA, so a
+        #   fixed BACKUP_TIMEOUT cuts it off by mistake (e.g. a 4 GB video failing at
+        #   600 s). Use batch_bytes / assumed speed as the lower bound, capped by the
+        #   absolute maximum.
+        _idle_timeout = int(timeout)
+        _bb = 0
+        _mbps = 0.0
+        try:
+            _bb = int(batch_bytes or 0)
+            _mbps = float(getattr(
+                _settings, "MIN_BACKUP_THROUGHPUT_MBPS", MIN_BACKUP_THROUGHPUT_MBPS
+            ) or 0.0)
+            if _bb > 0 and _mbps > 0:
+                _est = int(_bb / (_mbps * 1024 * 1024))
+                if _est > _idle_timeout:
+                    _idle_timeout = _est
+        except Exception:
+            pass
+        if _idle_timeout > _abs_max:
+            _idle_timeout = _abs_max
+        if _idle_timeout < 1:
+            _idle_timeout = 1
+        if _idle_timeout != int(timeout):
+            # 延長 が 効い た 場合 のみ 1 行 残す (長時間 評価 の 事後 解析 用)。
+            # Log one line only when the scaling kicked in (for post-run analysis).
+            try:
+                Logger.info(tr("bw.log.idle_timeout_scaled").format(
+                    base=int(timeout), scaled=_idle_timeout,
+                    gb=round(_bb / 1024 ** 3, 2), mbps=_mbps,
+                ))
+            except Exception:
+                pass
 
         print_phase(tr("backup.waiting"))
 
@@ -369,7 +411,7 @@ class UploadWorker:
                 _bwlv = "standard"
             if _bwlv == "full":
                 print(tr("bw.status.header").format(
-                    status=status, elapsed=elapsed, timeout=timeout,
+                    status=status, elapsed=elapsed, timeout=_idle_timeout,
                     streak=complete_streak, total_c=saw_complete_count_total,
                     first_c=first_c_display,
                     recent=complete_hits_in_window, window=RECENT_WINDOW,
@@ -648,7 +690,7 @@ class UploadWorker:
             # v1.7.15: Abort decision changed from total elapsed to continuous
             # no-progress; also uses an absolute upper bound to prevent endless waits.
             _idle = time.time() - last_progress_ts
-            _timeout_hit = bool(_idle > timeout or elapsed > _abs_max)
+            _timeout_hit = bool(_idle > _idle_timeout or elapsed > _abs_max)
             if _timeout_hit:
 
                 # --- C. 最終保険 (timeout時多数決)

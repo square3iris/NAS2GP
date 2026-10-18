@@ -27,6 +27,20 @@
       <button class="warnb" onclick="callDeleteUploaded()">{{ tr('web.device.delete_uploaded') }}</button>
     </div>
 
+    <div style="margin-top:16px; border-top:1px dashed var(--err); padding-top:12px;">
+      <div class="small" style="margin-bottom:8px; color:var(--err); font-weight:bold;">{{ tr('web.device.dcim_warn_note') }}</div>
+      <label class="small" style="display:flex; gap:8px; align-items:flex-start; margin-bottom:6px; cursor:pointer;">
+        <input type="checkbox" id="px-dcim-c1" onchange="pxDcimCheck()" style="margin-top:2px;">
+        <span>{{ tr('web.device.dcim_check1') }}</span>
+      </label>
+      <label class="small" style="display:flex; gap:8px; align-items:flex-start; margin-bottom:8px; cursor:pointer;">
+        <input type="checkbox" id="px-dcim-c2" onchange="pxDcimCheck()" style="margin-top:2px;">
+        <span>{{ tr('web.device.dcim_check2') }}</span>
+      </label>
+      <button id="px-dcim-btn" class="warnb" disabled onclick="callDeleteDcimAll()"
+              style="opacity:0.5; cursor:not-allowed;">{{ tr('web.device.delete_dcim_all') }}</button>
+    </div>
+
     <div id="px-msg" class="small" style="margin-top:10px; min-height:16px;"></div>
   </section>
 {% endblock %}
@@ -170,6 +184,60 @@ async function callDeleteUploaded(){
   } catch(e){ alert(tf('web.device.uploaded_fail', {err: e})); }
 }
 
+function _fmtDcimResult(j){
+  j = j || {};
+  const targets = Array.isArray(j.targets) ? j.targets : [];
+  const lines = [];
+  lines.push(j.ok === true ? t('web.device.del.ok') : t('web.device.del.ng'));
+  lines.push(tf('web.device.del.targets', {targets: (targets.length ? targets.join(', ') : t('web.device.del.none'))}));
+  if (typeof j.db_delete_reconciled === 'number') lines.push(tf('web.device.dcim_reconciled', {n: j.db_delete_reconciled}));
+  if (typeof j.free_gb_after === 'number') lines.push(tf('web.device.del.free_after', {gb: j.free_gb_after.toFixed(2)}));
+  if (j.error) lines.push(tf('web.device.del.error', {err: j.error}));
+  if (Array.isArray(j.logs) && j.logs.length) {
+    lines.push('');
+    lines.push(t('web.device.del.detail'));
+    lines.push(j.logs.join('\n'));
+  }
+  alert(t('web.device.dcim_title') + '\n\n' + lines.join('\n'));
+}
+
+function pxDcimCheck(){
+  const c1 = $('px-dcim-c1');
+  const c2 = $('px-dcim-c2');
+  const btn = $('px-dcim-btn');
+  if (!btn) return;
+  const on = !!(c1 && c1.checked && c2 && c2.checked);
+  btn.disabled = !on;
+  btn.style.opacity = on ? '1' : '0.5';
+  btn.style.cursor = on ? 'pointer' : 'not-allowed';
+}
+
+async function callDeleteDcimAll(){
+  const c1 = $('px-dcim-c1');
+  const c2 = $('px-dcim-c2');
+  if (!(c1 && c1.checked && c2 && c2.checked)) return;
+  if (!confirm(t('web.device.dcim_confirm_final'))) return;
+  _pxMsg('');
+  try {
+    const r = await fetch('/api/device/delete_dcim_all', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({confirm: true}),
+    });
+    const j = await r.json();
+    if (r.status === 409) {
+      _pxMsg(j.message || t('web.consent.required'), 'var(--err)');
+      return;
+    }
+    _fmtDcimResult(j);
+    if (c1) c1.checked = false;
+    if (c2) c2.checked = false;
+    pxDcimCheck();
+    loadWorkdir();
+  } catch(e){ alert(tf('web.device.uploaded_fail', {err: e})); }
+}
+
 loadWorkdir();
+pxDcimCheck();
 </script>
 {% endblock %}
