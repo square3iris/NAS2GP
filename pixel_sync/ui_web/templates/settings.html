@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block content %}
+  <style>
+    #cfg-editor { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:10px 18px; align-items:start; }
+    #cfg-editor .cfg-group { grid-column: 1 / -1; font-weight:700; color:var(--accent); margin:14px 0 0; border-bottom:1px solid #334155; padding-bottom:4px; }
+    #cfg-editor .cfg-group-desc { grid-column: 1 / -1; font-size:12px; color:var(--sub); margin-top:2px; }
+    #cfg-editor .cfg-item { display:flex; flex-direction:column; gap:4px; min-width:0; }
+    #cfg-editor .cfg-label { font-size:13px; color:var(--sub); }
+    #cfg-editor .cfg-desc { font-size:11px; color:var(--sub); opacity:.8; line-height:1.3; }
+    #cfg-editor .cfg-item input[type=checkbox] { align-self:flex-start; }
+  </style>
+  <section class="card">
+    <h2>{{ tr('web.settings.title') }}</h2>
+    <div class="small" style="margin-bottom:10px">{{ tr('web.settings.note') }}</div>
+    <div id="cfg-editor"></div>
+    <div style="margin-top:12px" class="btns">
+      <button class="ghost" onclick="loadEditor()">{{ tr('web.settings.load') }}</button>
+      <button class="start" onclick="saveEditor()">{{ tr('web.settings.save') }}</button>
+    </div>
+    <div id="cfg-msg" class="small" style="margin-top:8px"></div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _cfgSchema = null;
+let _cfgVals = {};
+function _styleCfgInput(el){
+  el.style.width='100%'; el.style.background='#0f172a'; el.style.color='#e2e8f0';
+  el.style.border='1px solid #334155'; el.style.borderRadius='6px'; el.style.padding='6px 8px';
+  return el;
+}
+function _makeCfgInput(it, val){
+  const t = it.type || 'text';
+  let el;
+  if (t === 'bool'){
+    el = document.createElement('input'); el.type='checkbox'; el.checked = !!val;
+    el.style.transform='scale(1.2)'; el.style.alignSelf='flex-start';
+  } else if (t === 'select'){
+    el = document.createElement('select');
+    for (const c of (it.choices||[])){
+      const o = document.createElement('option'); o.value = c.value; o.textContent = c.label; el.appendChild(o);
+    }
+    el.value = (val == null ? '' : String(val));
+    if (!el.value && it.choices && it.choices.length) el.value = it.choices[0].value;
+  } else if (t === 'gb'){
+    el = document.createElement('input'); el.type='number';
+    el.step = String(it.step || 0.5);
+    if (it.min != null) el.min = it.min;
+    if (it.max != null) el.max = it.max;
+    const bytes = Number(val)||0;
+    el.value = String(bytes > 0 ? Number((bytes/(1024**3)).toFixed(2)) : 0);
+  } else if (t === 'int' || t === 'float'){
+    el = document.createElement('input'); el.type='number';
+    if (it.min != null) el.min = it.min;
+    if (it.max != null) el.max = it.max;
+    el.step = (t === 'int') ? '1' : 'any';
+    el.value = String(val == null ? '' : val);
+  } else {
+    el = document.createElement('input'); el.type='text'; el.value = String(val == null ? '' : val);
+  }
+  _styleCfgInput(el);
+  el.dataset.key = it.key;
+  el.dataset.type = t;
+  const tip = it.desc || it.tooltip;
+  if (tip) el.title = tip;
+  return el;
+}
+async function loadEditor(){
+  try {
+    if (!_cfgSchema){
+      const sr = await fetch('/api/settings/schema').then(x=>x.json());
+      _cfgSchema = (sr && sr.groups) ? sr.groups : [];
+    }
+    const vals = await fetch('/api/settings').then(x=>x.json());
+    _cfgVals = (vals && typeof vals === 'object') ? vals : {};
+    const box = document.getElementById('cfg-editor');
+    box.innerHTML = '';
+    let n = 0;
+    for (const g of _cfgSchema){
+      const h = document.createElement('div');
+      h.className = 'cfg-group';
+      h.textContent = g.title || '';
+      box.appendChild(h);
+      if (g.desc){
+        const gd = document.createElement('div');
+        gd.className = 'cfg-group-desc';
+        gd.textContent = g.desc;
+        box.appendChild(gd);
+      }
+      for (const it of (g.items||[])){
+        const item = document.createElement('div');
+        item.className = 'cfg-item';
+        const lb = document.createElement('div');
+        lb.className = 'cfg-label';
+        lb.textContent = it.label || it.key;
+        item.appendChild(lb);
+        item.appendChild(_makeCfgInput(it, vals[it.key]));
+        const tip = it.desc || it.tooltip;
+        if (tip){
+          const dd = document.createElement('div');
+          dd.className = 'cfg-desc';
+          dd.textContent = tip;
+          item.appendChild(dd);
+        }
+        box.appendChild(item);
+        n++;
+      }
+    }
+    document.getElementById('cfg-msg').textContent = tf('web.settings.loaded', {n: n});
+  } catch(e){ console.warn(e); document.getElementById('cfg-msg').textContent = tf('web.settings.load_fail', {err: e}); }
+}
+async function saveEditor(){
+  try {
+    const payload = {};
+    const box = document.getElementById('cfg-editor');
+    box.querySelectorAll('[data-key]').forEach(n=>{
+      const t = n.dataset.type;
+      if (t === 'bool'){ payload[n.dataset.key] = !!n.checked; return; }
+      const raw = n.value;
+      if (t === 'gb'){
+        const gb = Number(raw);
+        payload[n.dataset.key] = Number.isFinite(gb) ? Math.round(gb * (1024**3)) : raw;
+      } else if (t === 'int'){
+        const v = Number(raw); payload[n.dataset.key] = Number.isFinite(v) ? Math.round(v) : raw;
+      } else if (t === 'float'){
+        const v = Number(raw); payload[n.dataset.key] = Number.isFinite(v) ? v : raw;
+      } else {
+        payload[n.dataset.key] = raw;
+      }
+    });
+    const prevLang = String(_cfgVals.LANGUAGE == null ? '' : _cfgVals.LANGUAGE);
+    const r = await fetch('/api/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const j = await r.json();
+    let msg = tf('web.settings.save_result', {ok: j.ok});
+    if (j.error) msg += ' error=' + j.error;
+    else if (j.saved) msg += tf('web.settings.saved_count', {n: Object.keys(j.saved||{}).length});
+    if (j.warnings && j.warnings.length) msg += tf('web.settings.warn_prefix', {warn: JSON.stringify(j.warnings)});
+    document.getElementById('cfg-msg').textContent = msg;
+    // v1.7.16: 言語 が 変わっ た 場合 は 表示 を 切替 える ため 再読み込み する 。
+    // v1.7.16: Reload the page when the language changed so the UI switches over.
+    if (j.ok && payload.LANGUAGE != null && String(payload.LANGUAGE) !== prevLang){
+      document.getElementById('cfg-msg').textContent = t('web.settings.lang_changed');
+      setTimeout(()=>location.reload(), 900);
+    }
+  } catch(e){ console.warn(e); document.getElementById('cfg-msg').textContent = t('web.settings.save_fail') + ': ' + e; }
+}
+loadEditor();
+</script>
+{% endblock %}

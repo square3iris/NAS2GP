@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="card">
+    <h2>{{ tr('web.pixel.title') }}</h2>
+    <div id="px-free" class="small">--</div>
+    <div class="btns" style="margin:10px 0">
+      <button class="ghost" onclick="reloadPixelFolders()">{{ tr('web.pixel.reload') }}</button>
+      <button class="stop" style="background:#991b1b" onclick="callDeleteUploaded()">{{ tr('web.pixel.delete_uploaded') }}</button>
+    </div>
+    <div class="small" style="margin:2px 0 10px">{{ tr('web.pixel.uploaded_note') }}</div>
+    <div id="px-folders"></div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function reloadPixelFolders(){
+  try {
+    const r = await fetch('/api/pixel/folders').then(x=>x.json());
+    const pxBox = document.getElementById('px-folders');
+    const pxFree = document.getElementById('px-free');
+    if (!r.ok) { pxFree.textContent = tf('web.pixel.fetch_fail', {err: r.error||''}); pxBox.innerHTML=''; return; }
+    pxFree.innerHTML = `${t('web.pixel.free')}<b style="color:var(--ok)">${Number(r.free_gb||0).toFixed(2)} GB</b>`;
+    if (!r.folders || r.folders.length === 0) { pxBox.innerHTML='<div class="small">'+t('web.pixel.no_folders')+'</div>'; return; }
+    pxBox.innerHTML = r.folders.map(f => {
+      const sz = Number(f.size_bytes||0);
+      const szTxt = sz >= 1024**3 ? (sz/1024**3).toFixed(2)+' GB'
+                 : sz >= 1024**2 ? (sz/1024**2).toFixed(1)+' MB'
+                 : sz >= 1024   ? Math.floor(sz/1024)+' KB'
+                 : (sz?sz+' B':'?');
+      return `<div style="padding:6px 8px; border-bottom:1px solid #1e293b;">
+        <div style="font-weight:600">${esc(f.name||'')}</div>
+        <div class="small">${esc(f.path||'')} · ${tf('web.pixel.files_fmt', {count: f.count||0})} · ${szTxt}</div>
+      </div>`;
+    }).join('');
+  } catch(e){ console.warn(e); alert(tf('web.pixel.list_fail', {err: e})); }
+}
+function _fmtDeleteResult(title, j){
+  j = j || {};
+  const targets = Array.isArray(j.targets) ? j.targets : [];
+  const lines = [];
+  lines.push(j.ok === true ? t('web.pixel.del.ok') : t('web.pixel.del.ng'));
+  lines.push(tf('web.pixel.del.targets', {targets: (targets.length ? targets.join(', ') : t('web.pixel.del.none'))}));
+  lines.push(tf('web.pixel.del.result', {ok: j.ok_cnt||0, err: j.err_cnt||0, total: j.total||0}));
+  if (typeof j.free_gb_after === 'number') lines.push(tf('web.pixel.del.free_after', {gb: j.free_gb_after.toFixed(2)}));
+  if (j.error) lines.push(tf('web.pixel.del.error', {err: j.error}));
+  if (Array.isArray(j.logs) && j.logs.length) {
+    lines.push('');
+    lines.push(t('web.pixel.del.detail'));
+    lines.push(j.logs.join('\n'));
+  }
+  alert(title + '\n\n' + lines.join('\n'));
+}
+async function callDeleteUploaded(){
+  if (!confirm(t('web.pixel.confirm_uploaded'))) return;
+  try {
+    const r = await fetch('/api/pixel/delete_uploaded', { method:'POST' });
+    const j = await r.json();
+    _fmtDeleteResult(t('web.pixel.uploaded_title'), j);
+    reloadPixelFolders();
+  } catch(e){ alert(tf('web.pixel.uploaded_fail', {err: e})); }
+}
+reloadPixelFolders();
+</script>
+{% endblock %}

@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="card" style="padding:14px 18px;">
+    <h2 style="margin-bottom:8px"><span id="adb-dot" class="dot off"></span>{{ tr('web.home.dev.section') }} <span id="adb-summary" class="small"></span></h2>
+    <div id="adb-devices" class="small">{{ tr('web.home.dev.checking') }}</div>
+    <div id="dev-health" class="small" style="display:none; margin-top:8px; padding:7px 12px; background:rgba(56,189,248,.08); border-left:3px solid var(--accent); border-radius:6px; font-size:13px; font-weight:600; color:var(--accent);"></div>
+    <div class="btns" style="margin-top:10px">
+      <button class="ghost" onclick="reloadDevices()">{{ tr('web.home.dev.recheck') }}</button>
+      <span class="small" style="align-self:center">{{ tr('web.home.dev.auto') }}</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div id="banner" class="banner idle"><span class="banner-dot"></span><span id="banner-title">{{ tr('web.home.banner.idle') }}</span></div>
+    <div id="banner-phase" class="banner-phase" style="display:none"></div>
+    <div id="banner-sub" class="banner-sub">--</div>
+    <div id="adb-alert" style="display:none; margin-top:8px; padding:8px 12px; background:rgba(239,68,68,.12); border-left:4px solid var(--err); border-radius:6px; font-size:13px; font-weight:700; color:var(--err);"></div>
+
+    <div id="steps" class="steps" style="display:none"></div>
+
+    <div class="bar" style="margin-top:12px"><div id="bar"></div></div>
+    <div class="small" style="margin-top:6px; display:flex; justify-content:space-between;">
+      <span id="pct">0.0 %</span><span id="file-progress">-- / -- files</span>
+    </div>
+    <div id="gp-line" style="display:none; margin-top:8px; padding:7px 12px; background:rgba(56,189,248,.08); border-left:3px solid var(--accent); border-radius:6px; font-size:13px; font-weight:600; color:var(--accent);"></div>
+
+    <div class="statgrid">
+      <div><span class="sg-l">{{ tr('web.home.stat.batch') }}</span><span class="sg-v" id="sg-batch">0 / 0</span></div>
+      <div><span class="sg-l">{{ tr('web.home.stat.remain') }}</span><span class="sg-v" id="sg-remain">0</span></div>
+      <div><span class="sg-l">{{ tr('web.home.stat.speed') }}</span><span class="sg-v" id="sg-speed">--</span></div>
+      <div><span class="sg-l">{{ tr('web.home.stat.eta') }}</span><span class="sg-v" id="sg-eta">--</span></div>
+      <div><span class="sg-l">{{ tr('web.home.stat.counts') }}</span><span class="sg-v" id="sg-ok">0 / 0 / 0</span></div>
+      <div><span class="sg-l">{{ tr('web.home.stat.time') }}</span><span class="sg-v" id="sg-time">--</span></div>
+    </div>
+
+    <details style="margin-top:10px">
+      <summary class="small" style="cursor:pointer">{{ tr('web.home.details') }}</summary>
+      <div class="small" style="margin-top:6px; line-height:1.8">
+        <div>{{ tr('web.home.detail.cur') }}: <span id="cur">--</span></div>
+        <div>{{ tr('web.home.detail.ev') }}: <span id="ev">--</span></div>
+        <div>{{ tr('web.home.detail.ts') }}: <span id="ts">--</span></div>
+      </div>
+    </details>
+
+    <div style="margin-top:14px;" class="btns">
+      <button class="start" onclick="callStart()">{{ tr('web.home.btn.start') }}</button>
+      <button class="ghost" onclick="callStopBatch()">{{ tr('web.home.btn.stop_batch') }}</button>
+      <button class="stop"  onclick="callStop()">{{ tr('web.home.btn.stop') }}</button>
+      <button class="ghost" onclick="reloadStatus()">{{ tr('web.home.btn.refresh') }}</button>
+    </div>
+    <div id="cmd-msg" class="small" style="margin-top:8px; min-height:16px;"></div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PHASE_LABEL = {
+  IDLE:t('web.phase.idle'), DONE:t('web.phase.done'), ERROR:t('web.phase.error'),
+  STOP_REQUESTED:t('web.phase.stop_requested'),
+  UPLOAD:t('web.phase.upload'), WAIT_BACKUP:t('web.phase.wait_backup'),
+  GC:t('web.phase.gc'), DELETE:t('web.phase.delete'),
+  RECOVER:t('web.phase.recover'), SYNC:t('web.phase.sync'),
+  CAPACITY:t('web.phase.capacity'), GP_STOP:t('web.phase.gp_stop'),
+  MEDIA_SCAN:t('web.phase.media_scan'), GP_START:t('web.phase.gp_start'),
+  ADB_RECONNECT:t('web.phase.adb_reconnect'), BATTERY_WAIT:t('web.phase.battery_wait')
+};
+// バッチ 内 の 工程 一覧 (番号 は flow.py の phase_no と 一致 させる こと)
+// List of in-batch steps (numbers must match phase_no in flow.py)
+const BATCH_STEPS = [
+  {no:1, label:t('web.step.capacity')},
+  {no:2, label:t('web.step.gp_stop')},
+  {no:3, label:t('web.step.upload')},
+  {no:4, label:t('web.step.media_scan')},
+  {no:5, label:t('web.step.gp_start')},
+  {no:6, label:t('web.step.wait_backup')},
+  {no:7, label:t('web.step.delete')},
+];
+let _indBatch = -1, _indStep = 0;
+function renderSteps(snap, running){
+  const box = $('steps');
+  if (!box) return;
+  if (!running){ _indBatch = -1; _indStep = 0; box.style.display = 'none'; return; }
+  const pb = (snap.phase_batch === null || snap.phase_batch === undefined) ? -1 : Number(snap.phase_batch);
+  const no = Number(snap.phase_no || 0);
+  if (pb >= 0 && pb !== _indBatch){ _indBatch = pb; _indStep = 0; }
+  if (pb >= 0 && no > 0) _indStep = no;
+  box.style.display = 'flex';
+  box.innerHTML = BATCH_STEPS.map(s => {
+    let cls = 'step pending';
+    if (_indStep > 0 && s.no < _indStep) cls = 'step done';
+    else if (s.no === _indStep) cls = 'step active';
+    return `<div class="${cls}"><span class="step-dot"></span><span class="step-label">${s.no}. ${esc(s.label)}</span></div>`;
+  }).join('');
+}
+function _parseTs(s){
+  const m = String(s||'').match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return 0;
+  return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]).getTime();
+}
+function _fmtDur(sec){
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  if (h > 0) return tf('web.home.dur_hm', {h, m});
+  if (m > 0) return tf('web.home.dur_ms', {m, s});
+  return tf('web.home.dur_s', {s});
+}
+function _elapsedText(snap){
+  const t0 = _parseTs(snap.started_at);
+  if (!t0) return '--';
+  const t1 = snap.finished_at ? _parseTs(snap.finished_at) : Date.now();
+  const dur = _fmtDur(Math.max(0, Math.round((t1 - t0)/1000)));
+  return snap.finished_at ? dur : dur + ' (' + t('web.home.in_progress') + ')';
+}
+function _phaseLine(snap){
+  const title = String(snap.phase_title||'').trim();
+  if (!title) return '';
+  const no = Number(snap.phase_no||0), tot = Number(snap.phase_total||0);
+  if (no > 0) return tot > 0 ? tf('web.home.phase_fmt', {no, tot, title}) : tf('web.home.phase_fmt_notot', {no, title});
+  return title;
+}
+function _bannerSub(snap, ph, running){
+  const parts = [];
+  const tb = Number(snap.total_batches||0), bi = Number(snap.batch_idx||0);
+  if (tb > 0) parts.push(tf('web.home.batch_fmt', {i: bi, n: tb}));
+  const remain = Number(snap.remaining_files||0);
+  if (remain > 0) parts.push(tf('web.home.remain_fmt', {n: remain}));
+  const sp = Number(snap.speed_bps||0);
+  if (sp > 0) parts.push(tf('web.home.avg_fmt', {v: fmt_bytes(sp)}));
+  const eta = Number(snap.eta_seconds||0);
+  if (eta > 0) parts.push(tf('web.home.eta_fmt', {eta: fmt_eta(eta)}));
+  const det = String(snap.phase_detail||'').trim();
+  if (det) parts.push(det);
+  if (running && snap.stop_after_batch){
+    parts.push(t('web.home.stop_after'));
+  }
+  if (ph === 'ERROR'){
+    const lf = String(snap.last_file||'').trim();
+    if (lf) parts.push(lf);
+  }
+  const counts = {ok: snap.success ?? 0, skip: snap.skipped ?? 0, fail: snap.failed ?? 0};
+  if (!running && ph !== 'ERROR'){
+    parts.push(tf('web.home.final_fmt', counts));
+  } else {
+    parts.push(tf('web.home.counts_fmt', counts));
+  }
+  return parts.join(t('web.home.sep'));
+}
+function fmtGpEta(s){
+  s = Number(s)||0; if (s <= 0) return '';
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), ss = s%60;
+  if (h > 0) return tf('web.home.gp.eta_hm', {h, m});
+  if (m > 0) return tf('web.home.gp.eta_m', {m});
+  return tf('web.home.gp.eta_s', {s: ss});
+}
+function fmtGp(snap){
+  if (snap.gp_complete) return '';
+  const parts = [];
+  const items = snap.gp_items;
+  if (items !== null && items !== undefined && Number(items) > 0) parts.push(tf('web.home.gp.remain', {n: Number(items)}));
+  const etaText = String(snap.gp_eta_text||'').trim();
+  if (etaText) parts.push(etaText);
+  else { const e = fmtGpEta(snap.gp_eta_seconds); if (e) parts.push(e); }
+  const det = String(snap.gp_detail||'').trim();
+  if (det) parts.push(det);
+  return parts.length ? ('Google Photos: ' + parts.join(' / ')) : '';
+}
+function render(snap){
+  snap = snap || {};
+  const ph = String(snap.phase || 'IDLE').toUpperCase();
+  const running = !!snap.running;
+
+  // --- 状態バナー (荒い粒度 の トラフィックライト) ---
+  // --- Status banner (coarse-grained traffic light) ---
+  let kind = 'idle', title = t('web.home.banner.idle');
+  if (ph === 'ERROR'){ kind = 'err'; title = t('web.phase.error'); }
+  else if (ph === 'STOP_REQUESTED'){ kind = 'warn'; title = t('web.phase.stop_requested'); }
+  else if (ph === 'DONE'){ kind = 'done'; title = t('web.phase.done'); }
+  else if (ph === 'ADB_RECONNECT' || ph === 'BATTERY_WAIT'){ kind = 'warn'; title = PHASE_LABEL[ph] || t('web.home.banner.running'); }
+  else if (running){ kind = 'run'; title = PHASE_LABEL[ph] || t('web.home.banner.running'); }
+  const banner = $('banner');
+  if (banner) banner.className = 'banner ' + kind;
+  $('banner-title').textContent = title;
+  $('banner-sub').textContent = _bannerSub(snap, ph, running);
+  const bp = $('banner-phase');
+  if (bp){
+    const line = _phaseLine(snap);
+    bp.textContent = line;
+    bp.style.display = line ? 'block' : 'none';
+  }
+  // v1.7.18: ADB 復旧不能 (切断 で 安全 停止) の 永続 アラート 表示
+  // v1.7.18: Persistent alert for an unrecoverable ADB disconnect (safe stop)
+  const al = $('adb-alert');
+  if (al){
+    const msg = String(snap.adb_alert||'').trim();
+    al.textContent = msg;
+    al.style.display = msg ? 'block' : 'none';
+  }
+
+  // --- バッチ内 工程 インジケータ (実行中 の 工程 を 緑 で 点灯) ---
+  // --- In-batch step indicator (lights the active step in green) ---
+  renderSteps(snap, running);
+
+  // --- 進捗バー (total_files 不明 の とき は バッチ 進捗 で 代用) ---
+  // --- Progress bar (falls back to batch progress when total_files is unknown) ---
+  let pct = Number(snap.percent||0);
+  if (!(Number(snap.total_files||0) > 0)){
+    const tb = Number(snap.total_batches||0), bi = Number(snap.batch_idx||0);
+    pct = tb > 0 ? Math.max(0, Math.min(100, ((bi - 1) / tb) * 100)) : 0;
+  }
+  $('bar').style.width = pct.toFixed(2)+'%';
+  $('pct').textContent = pct.toFixed(2)+' %';
+  const tot = Number(snap.total_files||0), rem = Number(snap.remaining_files||0);
+  $('file-progress').textContent = tot > 0
+    ? tf('web.home.progress_files', {done: Math.max(0, tot-rem), total: tot})
+    : tf('web.home.remain_fmt', {n: rem});
+
+  const gpl = $('gp-line');
+  if (gpl){
+    // v1.7.15: GP 進捗 行 は 「バックアップ 待機 中」 の とき だけ 表示 する。
+    //   (待機 を 抜け た 後 に 前 回 の 「残り N 枚」 が 残り 続け る の を 防ぐ)
+    // v1.7.15: Show the GP progress line only while waiting for backup.
+    //   (Prevents a previous "N remaining" count from lingering after the wait ends.)
+    const gp = (ph === 'WAIT_BACKUP') ? fmtGp(snap) : '';
+    gpl.textContent = gp;
+    gpl.style.display = gp ? 'block' : 'none';
+  }
+
+  // --- 要約グリッド ---
+  // --- Summary grid ---
+  $('sg-batch').textContent  = `${snap.batch_idx||0} / ${snap.total_batches||0}`;
+  $('sg-remain').textContent = `${rem}`;
+  $('sg-speed').textContent  = Number(snap.speed_bps||0) > 0 ? fmt_bytes(Number(snap.speed_bps)) + '/s' : '--';
+  $('sg-eta').textContent    = Number(snap.eta_seconds||0) > 0 ? fmt_eta(Number(snap.eta_seconds)) : '--';
+  $('sg-ok').textContent     = `${snap.success ?? 0} / ${snap.failed ?? 0} / ${snap.skipped ?? 0}`;
+  $('sg-time').textContent   = _elapsedText(snap);
+
+  // --- 詳細 (折りたたみ) ---
+  // --- Details (collapsible) ---
+  $('cur').textContent = snap.last_file || '--';
+  $('ev').textContent  = snap.last_event || '--';
+  $('ts').textContent  = (snap.started_at||'--') + ' → ' + (snap.finished_at||t('web.home.in_progress'));
+}
+async function reloadStatus(){
+  try {
+    const s = await fetch('/api/status').then(r=>r.json());
+    render(s);
+  } catch(e) { console.warn(e); }
+}
+function _cmdMsg(text, color){
+  const el = document.getElementById('cmd-msg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = color || 'var(--sub)';
+  if (el._t) clearTimeout(el._t);
+  if (text) el._t = setTimeout(() => { el.textContent = ''; }, 5000);
+}
+async function callStart(){
+  try {
+    const r = await fetch('/api/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json();
+    if (d && d.ok) _cmdMsg(t('web.home.msg.start_ok'), 'var(--ok)');
+    else _cmdMsg(t('web.home.msg.start_ng'), 'var(--warn)');
+    reloadStatus();
+  } catch(e){ _cmdMsg(t('web.home.msg.start_fail') + ': ' + e, 'var(--err)'); }
+}
+async function callStop(){
+  try {
+    const r = await fetch('/api/stop', { method:'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _cmdMsg(t('web.home.msg.stop_ok'), 'var(--warn)');
+    reloadStatus();
+  } catch(e){ _cmdMsg(t('web.home.msg.stop_fail') + ': ' + e + ' — ' + t('web.home.msg.server_old'), 'var(--err)'); }
+}
+async function callStopBatch(){
+  try {
+    const r = await fetch('/api/stop_batch', { method:'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _cmdMsg(t('web.home.msg.stop_batch_ok'), 'var(--warn)');
+    reloadStatus();
+  } catch(e){ _cmdMsg(t('web.home.msg.stop_batch_fail') + ': ' + e + ' — ' + t('web.home.msg.server_old'), 'var(--err)'); }
+}
+async function reloadDevices(){
+  const box = document.getElementById('adb-devices');
+  const dot = document.getElementById('adb-dot');
+  const sum = document.getElementById('adb-summary');
+  if (!box || !dot || !sum) return;
+  const STATE_LABEL = {
+    device:t('web.home.dev.state.device'), offline:t('web.home.dev.state.offline'),
+    unauthorized:t('web.home.dev.state.unauthorized'), authorizing:t('web.home.dev.state.authorizing'),
+    bootloader:t('web.home.dev.state.bootloader'), recovery:t('web.home.dev.state.recovery')
+  };
+  try {
+    const r = await fetch('/api/adb/devices').then(x=>x.json());
+    const devs = r.devices || [];
+    const on = devs.filter(d => d.state === 'device');
+    if (on.length > 0 && r.shell_ok) {
+      dot.className = 'dot on';
+      sum.innerHTML = '<b style="color:var(--ok)">' + t('web.home.dev.connected') + '</b> ' + on.length + ' ' + t('web.home.dev.unit') + ' ' + t('web.home.dev.shell_ok');
+    } else if (on.length > 0) {
+      dot.className = 'dot warn';
+      sum.innerHTML = '<b style="color:var(--warn)">' + t('web.home.dev.soft') + '</b> ' + t('web.home.dev.soft_note');
+    } else if (devs.length > 0) {
+      dot.className = 'dot warn';
+      sum.innerHTML = '<b style="color:var(--warn)">' + t('web.home.dev.unstable') + '</b> (' + devs.map(d=>STATE_LABEL[d.state]||d.state).join(', ') + ')';
+    } else {
+      dot.className = 'dot off';
+      sum.innerHTML = '<b style="color:#94a3b8">' + t('web.home.dev.none') + '</b> ' + t('web.home.dev.none_note');
+    }
+    if (devs.length === 0) {
+      box.innerHTML = '<span class="small">' + t('web.home.dev.hint') + '</span>';
+      return;
+    }
+    box.innerHTML = devs.map(d => {
+      const cls = (d.state === 'device' || d.state === 'offline' || d.state === 'unauthorized' || d.state === 'authorizing') ? d.state : 'other';
+      const label = STATE_LABEL[d.state] || d.state;
+      const color = d.state === 'device' ? 'var(--ok)' : 'var(--warn)';
+      return `<div class="dev-row">
+        <span class="dev-badge ${cls}" style="color:${color}">${label}</span>
+        <span class="dev-serial">${d.serial || ''}</span>
+        ${d.detail ? `<span class="small">${d.detail}</span>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    dot.className = 'dot off';
+    sum.textContent = '';
+    box.textContent = t('web.home.dev.fetch_fail') + ': ' + e;
+  }
+}
+(function initDevices(){
+  reloadDevices();
+  setInterval(reloadDevices, 30000);
+})();
+async function reloadDeviceInfo(){
+  const el = document.getElementById('dev-health');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/adb/device_info').then(x=>x.json());
+    if (!r || !r.ok){ el.style.display = 'none'; return; }
+    const parts = [];
+    const free = (r.storage_free_gb === null || r.storage_free_gb === undefined) ? null : Number(r.storage_free_gb);
+    const total = (r.storage_total_gb === null || r.storage_total_gb === undefined) ? null : Number(r.storage_total_gb);
+    if (free !== null){
+      const freeTxt = `${free.toFixed(1)} GB`;
+      const totTxt = (total !== null && total > 0) ? ` / ${total.toFixed(1)} GB` : '';
+      parts.push(t('web.home.health.storage') + ' ' + freeTxt + totTxt);
+    }
+    const temp = (r.battery_temp_c === null || r.battery_temp_c === undefined) ? null : Number(r.battery_temp_c);
+    if (temp !== null){
+      const warn = temp >= 45 ? ' (' + t('web.home.health.high') + ')' : '';
+      parts.push(t('web.home.health.temp') + ' ' + temp.toFixed(1) + ' ℃' + warn);
+    }
+    const lvl = (r.battery_level === null || r.battery_level === undefined) ? null : Number(r.battery_level);
+    if (lvl !== null) parts.push(t('web.home.health.battery') + ' ' + lvl + '%');
+    if (!parts.length){ el.style.display = 'none'; return; }
+    el.textContent = parts.join(t('web.home.sep'));
+    el.style.color = (temp !== null && temp >= 45) ? 'var(--warn)' : 'var(--accent)';
+    el.style.borderLeftColor = (temp !== null && temp >= 45) ? 'var(--warn)' : 'var(--accent)';
+    el.style.display = 'block';
+  } catch(e){
+    el.style.display = 'none';
+  }
+}
+(function initDeviceInfo(){
+  reloadDeviceInfo();
+  setInterval(reloadDeviceInfo, 30000);
+})();
+(function sse(){
+  const es = new EventSource('/progress/sse');
+  es.addEventListener('error', ()=>{ es.close(); setInterval(reloadStatus, 2000); });
+  es.addEventListener('message', (e)=>{
+    try { const d = JSON.parse(e.data); render(d.state||{}); } catch(_){}
+  });
+})();
+reloadStatus();
+</script>
+{% endblock %}
