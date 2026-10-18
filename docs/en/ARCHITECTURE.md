@@ -225,6 +225,7 @@ GET  /api/device/workdir              get device working folder
 POST /api/device/workdir              change device working folder (DCIM-only, saved to config)
 GET  /api/device/browse               list DCIM subfolders (?path=)
 POST /api/device/delete_uploaded      delete only NAS2GP-transferred files (safe)
+POST /api/device/reconcile_delete     reconcile delete state (re-queue rows recorded as DONE that still exist on the device)
 POST /api/open_path                   open a folder
 POST /api/start                       start sync
 POST /api/stop                        stop immediately

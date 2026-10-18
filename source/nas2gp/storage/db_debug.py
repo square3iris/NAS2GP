@@ -26,7 +26,8 @@ class DatabaseDebug:
             verify_state='PENDING',
             retry_count=0,
             last_error=NULL,
-            updated_at=CURRENT_TIMESTAMP
+            deleted_at=NULL,
+            updated_at=datetime('now', 'localtime')
         WHERE id IN (
             SELECT id
             FROM files

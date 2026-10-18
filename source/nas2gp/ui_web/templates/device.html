@@ -25,6 +25,8 @@
     <div style="margin-top:16px; border-top:1px solid #334155; padding-top:12px;">
       <div class="small" style="margin-bottom:8px">{{ tr('web.device.uploaded_note') }}</div>
       <button class="warnb" onclick="callDeleteUploaded()">{{ tr('web.device.delete_uploaded') }}</button>
+      <div class="small" style="margin:10px 0 8px">{{ tr('web.device.reconcile_note') }}</div>
+      <button class="ghost" onclick="callReconcileDelete()">{{ tr('web.device.reconcile_btn') }}</button>
     </div>
 
     <div style="margin-top:16px; border-top:1px dashed var(--err); padding-top:12px;">
@@ -205,6 +207,33 @@ async function callDeleteUploaded(){
     _fmtDeleteResult(t('web.device.uploaded_title'), j);
     loadWorkdir();
   } catch(e){ alert(tf('web.device.uploaded_fail', {err: e})); }
+}
+
+async function callReconcileDelete(){
+  _pxMsg(t('web.device.reconcile_running'), 'var(--sub)');
+  try {
+    const r = await fetch('/api/device/reconcile_delete', { method: 'POST' });
+    if (r.status === 409) {
+      const j = await r.json();
+      _pxMsg(j.message || t('web.consent.required'), 'var(--err)');
+      return;
+    }
+    const j = await r.json();
+    if (!j.ok) {
+      _pxMsg(tf('web.device.reconcile_error', {err: j.error || ''}), 'var(--err)');
+      return;
+    }
+    if (!j.stale) {
+      _pxMsg(t('web.device.reconcile_none'), 'var(--ok)');
+      return;
+    }
+    _pxMsg(tf('web.device.reconcile_result', {
+      device: j.device_files || 0, stale: j.stale || 0, fixed: j.fixed || 0
+    }), 'var(--ok)');
+    loadWorkdir();
+  } catch(e){
+    _pxMsg(tf('web.device.reconcile_error', {err: e}), 'var(--err)');
+  }
 }
 
 function _fmtDcimResult(j){

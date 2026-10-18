@@ -510,6 +510,12 @@ WORDS = {
     "web.device.dcim_confirm_final": "⚠️ 最後 の 確認 です。/sdcard/DCIM 配下 を すべて 削除 し ます。元 に 戻せ ませ ん。よろしい です か?",
     "web.device.dcim_title": "DCIM 全削除 結果",
     "web.device.dcim_reconciled": "削除 待ち DB を DONE に 整合: {n} 件",
+    "web.device.reconcile_note": "※ 端末 に 実 ファイル が 残っ て いる の に DB が 「削除 済み」 と 記録 し て いる ズレ を 検出 し 、 削除 待ち へ 戻し ます。実 ファイル は 削除 せず 、 状態 を 直す だけ です (その 後 「転送 し た ファイル のみ 削除」 で 消せ ます)。",
+    "web.device.reconcile_btn": "🧭 削除状態を整合 (DBと実機のズレを修復)",
+    "web.device.reconcile_running": "整合 中...",
+    "web.device.reconcile_result": "端末 の 実 ファイル: {device} 件 / DB と の ズレ: {stale} 件 / 削除 待ち へ 復帰: {fixed} 件",
+    "web.device.reconcile_none": "ズレは あり ませ ん で し た (DB と 実機 は 一致 し て い ます)。",
+    "web.device.reconcile_error": "エラー: {err}",
 
     # --- 管理画面 (management.html) ---
     "web.mgmt.open.title": "📂 関連フォルダを開く",

@@ -26,7 +26,8 @@ class DatabaseMaintenance:
             verify_state='PENDING',
             retry_count=0,
             last_error=NULL,
-            updated_at=CURRENT_TIMESTAMP
+            deleted_at=NULL,
+            updated_at=datetime('now', 'localtime')
         """)
 
         self.db.commit()
@@ -40,7 +41,9 @@ class DatabaseMaintenance:
         UPDATE files
         SET
             phone_transfer_state='PENDING',
-            updated_at=CURRENT_TIMESTAMP
+            phone_delete_state='PENDING',
+            deleted_at=NULL,
+            updated_at=datetime('now', 'localtime')
         """)
         self.db.commit()
 
@@ -53,7 +56,7 @@ class DatabaseMaintenance:
         UPDATE files
         SET
             google_photos_state='PENDING',
-            updated_at=CURRENT_TIMESTAMP
+            updated_at=datetime('now', 'localtime')
         """)
         self.db.commit()
 
@@ -66,7 +69,8 @@ class DatabaseMaintenance:
         UPDATE files
         SET
             phone_delete_state='PENDING',
-            updated_at=CURRENT_TIMESTAMP
+            deleted_at=NULL,
+            updated_at=datetime('now', 'localtime')
         """)
         self.db.commit()
 

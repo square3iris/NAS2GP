@@ -1437,6 +1437,92 @@ def create_app() -> FastAPI:
                 pass
         return result
 
+    @app.post("/api/device/reconcile_delete")
+    async def api_device_reconcile_delete():
+        """v1.13.3: 端末 に 実在 する の に DB が 「削除 済み (DONE)」 と 記録 し て
+        いる ファイル を 検出 し 、 削除 待ち (PENDING) へ 戻す 整合 ツール 。
+        過去 バージョン の バグ (再転送 時 に 削除 状態 が DONE の まま 残り 、 削除
+        対象 から 永久 に 外れ る) で 生じ た DB と 実機 の ズレ を 修復 する 。
+        実 ファイル は 削除 せず 、 状態 を 戻す だけ (削除 は 別 の 削除 操作 で 行う)。
+
+        v1.13.3: reconciliation tool. Detects files that physically exist on the
+        device while the DB records them as already deleted (DONE), and re-queues
+        them (PENDING). It repairs the mismatch left by the older bug (re-transfer
+        kept the delete state at DONE, permanently excluding the file from deletion).
+        It only fixes the state; it does not delete any real file.
+        """
+        _blk = _consent_block()
+        if _blk:
+            return JSONResponse(status_code=409, content=_blk)
+        result = {"ok": False, "device_files": 0, "stale": 0, "fixed": 0,
+                  "sample": [], "error": None}
+        try:
+            from nas2gp.device.adb import ADB as _ADB
+            from nas2gp.device.device import Device as _DevRC
+            from nas2gp.core import settings as _s_rc
+            from nas2gp.storage.db import Database as _DbRC
+            from nas2gp.core.logger import Logger as _LgRC
+            work = str(getattr(_s_rc, "DEVICE_WORK_DIR", "") or "").rstrip("/")
+            if not work:
+                result["error"] = "作業 フォルダ が 未設定 です 。"
+                return result
+            _dev = _DevRC()
+            try:
+                _dev.ensure_adb_alive(aggressive=True, shell_probe=True, publish_unrecoverable=True)
+            except Exception:
+                pass
+            try:
+                _names = set(str(x).strip() for x in (_ADB.list_dir(work) or []) if str(x).strip())
+            except Exception as e_ls:
+                result["error"] = f"端末 の 一覧 取得 に 失敗 し ま し た: {e_ls}"
+                return result
+            result["device_files"] = len(_names)
+            _db = _DbRC()
+            try:
+                _done_rows = list(_db.get_phone_delete_done_files() or [])
+            finally:
+                try:
+                    _db.close()
+                except Exception:
+                    pass
+            _path_by_name = {}
+            for (_p, fn) in _done_rows:
+                if fn:
+                    _path_by_name[str(fn)] = _p
+            _stale_paths = [_path_by_name[fn] for fn in _names if fn in _path_by_name]
+            result["stale"] = len(_stale_paths)
+            result["sample"] = sorted([fn for fn in _names if fn in _path_by_name])[:10]
+            if not _stale_paths:
+                result["ok"] = True
+                return result
+            try:
+                _db_w = _DbRC()
+                try:
+                    _fixed = int(_db_w.mark_phone_delete_pending_bulk(_stale_paths) or 0)
+                    if _fixed:
+                        _db_w.commit()
+                finally:
+                    try:
+                        _db_w.close()
+                    except Exception:
+                        pass
+            except Exception as e_db:
+                result["error"] = f"DB 更新 に 失敗: {e_db}"
+                return result
+            result["fixed"] = _fixed
+            result["ok"] = True
+            _LgRC.success(
+                f"[Web][削除整合] 端末実在={len(_names)} / DB削除済みとズレ={len(_stale_paths)} / PENDINGへ復帰={_fixed}"
+            )
+        except Exception as e:
+            result["error"] = f"{type(e).__name__}: {e}"
+            try:
+                from nas2gp.core.logger import Logger as _LgRCe
+                _LgRCe.error(f"[Web][削除整合] 全体 例外: {result['error']}")
+            except Exception:
+                pass
+        return result
+
     @app.get("/api/config/schema")
     async def api_config_schema():
         try:

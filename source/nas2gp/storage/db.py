@@ -102,8 +102,8 @@ class Database(
 
             last_error TEXT,
 
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (datetime('now', 'localtime')),
+            updated_at TEXT DEFAULT (datetime('now', 'localtime'))
 
         )
         """)
@@ -126,7 +126,7 @@ class Database(
             status TEXT,
 
             created_at TEXT
-                DEFAULT CURRENT_TIMESTAMP
+                DEFAULT (datetime('now', 'localtime'))
         )
         """)
 
@@ -311,7 +311,7 @@ class Database(
             google_photos_state='PENDING',
             phone_delete_state='PENDING',
             verify_state='PENDING',
-            updated_at=CURRENT_TIMESTAMP
+            updated_at=datetime('now', 'localtime')
         WHERE path=?
         """, (
             str(media.path),
@@ -329,7 +329,7 @@ class Database(
         UPDATE files
         SET
             nas_state=?,
-            updated_at=CURRENT_TIMESTAMP
+            updated_at=datetime('now', 'localtime')
         WHERE path=?
         """, (
             state,
@@ -351,12 +351,24 @@ class Database(
 
         if str(state) == "DONE":
             from datetime import datetime as _dt
+            # v1.13.3: 転送 完了 時 に 端末 側 削除 状態 を 必ず PENDING へ 戻す 。
+            #   過去 に 削除 済み (phone_delete_state='DONE') の ファイル を 再転送
+            #   する と 、この リセット が 無い 限り 削除 待ち から 永久 に 除外 さ れ 、
+            #   手動 削除 / Pre-1 GC / Phase 6 が すり抜け る (実 ファイル が 端末 に
+            #   残り 続け る) バグ の 原因 だっ た 。
+            # v1.13.3: always reset the device-delete state to PENDING on a completed
+            #   transfer. Without this reset, re-transferring a file whose
+            #   phone_delete_state was already 'DONE' left it permanently excluded from
+            #   deletion (manual delete / Pre-1 GC / Phase 6 all skipped it), so the
+            #   real file kept occupying space on the device.
             self.cursor.execute("""
             UPDATE files
             SET
                 phone_transfer_state=?,
                 transferred_at=?,
-                updated_at=CURRENT_TIMESTAMP
+                phone_delete_state='PENDING',
+                deleted_at=NULL,
+                updated_at=datetime('now', 'localtime')
             WHERE path=?
             """, (
                 state,
@@ -368,7 +380,7 @@ class Database(
             UPDATE files
             SET
                 phone_transfer_state=?,
-                updated_at=CURRENT_TIMESTAMP
+                updated_at=datetime('now', 'localtime')
             WHERE path=?
             """, (
                 state,
@@ -394,7 +406,7 @@ class Database(
             UPDATE files
             SET
                 phone_transfer_state='PENDING',
-                updated_at=CURRENT_TIMESTAMP
+                updated_at=datetime('now', 'localtime')
             WHERE path=? AND phone_transfer_state='FAILED'
             """, pairs)
             return int(getattr(self.cursor, "rowcount", 0) or 0)
@@ -411,7 +423,7 @@ class Database(
         UPDATE files
         SET
             google_photos_state=?,
-            updated_at=CURRENT_TIMESTAMP
+            updated_at=datetime('now', 'localtime')
         WHERE path=?
         """, (
             state,
@@ -428,7 +440,7 @@ class Database(
         UPDATE files
         SET
             phone_delete_state=?,
-            updated_at=CURRENT_TIMESTAMP
+            updated_at=datetime('now', 'localtime')
         WHERE path=?
         """, (
             state,
@@ -445,7 +457,7 @@ class Database(
         UPDATE files
         SET
             verify_state=?,
-            updated_at=CURRENT_TIMESTAMP
+            updated_at=datetime('now', 'localtime')
         WHERE path=?
         """, (
             state,
@@ -576,7 +588,9 @@ class Database(
             try:
                 self.cursor.execute("""
                 UPDATE files
-                SET phone_delete_state='DONE', updated_at=CURRENT_TIMESTAMP
+                SET phone_delete_state='DONE',
+                    deleted_at=datetime('now', 'localtime'),
+                    updated_at=datetime('now', 'localtime')
                 WHERE path=?
                   AND COALESCE(phone_delete_state, 'PENDING') != 'DONE'
                 """, (str(p),))
@@ -609,13 +623,73 @@ class Database(
         try:
             self.cursor.execute("""
             UPDATE files
-            SET phone_delete_state='DONE', updated_at=CURRENT_TIMESTAMP
+            SET phone_delete_state='DONE',
+                deleted_at=datetime('now', 'localtime'),
+                updated_at=datetime('now', 'localtime')
             WHERE phone_transfer_state='DONE'
               AND COALESCE(phone_delete_state, 'PENDING') IN ('PENDING', 'FAILED')
             """)
             return int(self.cursor.rowcount or 0)
         except Exception:
             return 0
+
+    def get_phone_delete_done_files(self, limit=None):
+        """v1.13.3 整合 ツール 用: 転送 完了 (phone_transfer_state='DONE') かつ
+        削除 済み (phone_delete_state='DONE') と DB が 記録 し て いる 行 を 返す 。
+        整合 ツール は これ ら の うち 端末 に 実在 する もの を 検出 し 、 再び 削除
+        対象 へ 戻す (PENDING)。
+
+        v1.13.3: for the reconciliation tool. Returns rows the DB records as
+        transferred and already deleted; the tool checks which of these still exist
+        on the device and re-queues them (PENDING).
+        """
+        base_sql = """
+        SELECT path, filename
+        FROM files
+        WHERE phone_transfer_state = 'DONE'
+          AND phone_delete_state = 'DONE'
+        ORDER BY id ASC
+        """
+        if limit and int(limit) > 0:
+            base_sql += f" LIMIT {int(limit)}"
+        try:
+            self.cursor.execute(base_sql)
+            rows = self.cursor.fetchall() or []
+            return [(r["path"], r["filename"]) for r in rows]
+        except Exception:
+            return []
+
+    def mark_phone_delete_pending_bulk(self, paths_list):
+        """v1.13.3 整合 ツール 用: 指定 パス 群 の 削除 状態 を 'PENDING' へ 戻す 。
+        DB が 「削除 済み」 と 記録 し て い て も 端末 に 実 ファイル が 残っ て いる
+        場合 に 、 再び 手動 削除 / Pre-1 GC / Phase 6 の 対象 に する 。
+        転送 未 完了 (phone_transfer_state != 'DONE') の 行 は 触ら ない 。
+        戻り値: 更新 し た 行数。
+
+        v1.13.3: for the reconciliation tool. Resets the delete state to PENDING for
+        the given paths when a real file still exists on the device despite the DB
+        recording it as deleted, so the next manual delete / Pre-1 GC / Phase 6 picks
+        it up again. Rows not yet transferred are never touched.
+        """
+        if not paths_list:
+            return 0
+        updated = 0
+        for p in paths_list:
+            try:
+                self.cursor.execute("""
+                UPDATE files
+                SET phone_delete_state='PENDING',
+                    deleted_at=NULL,
+                    updated_at=datetime('now', 'localtime')
+                WHERE path=?
+                  AND phone_transfer_state='DONE'
+                  AND phone_delete_state='DONE'
+                """, (str(p),))
+                if self.cursor.rowcount and self.cursor.rowcount > 0:
+                    updated += 1
+            except Exception:
+                continue
+        return updated
 
     def query(
         self,

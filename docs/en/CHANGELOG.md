@@ -117,6 +117,14 @@ removed desktop-GUI era is compressed).
 - **Docs (v1.13.2)**: updated section 3.6 in `docs/{ja,en}/SETTINGS.md`.
 - **Version bump (v1.13.2)**: `settings.APP_VERSION` changed from `1.13.1` to `1.13.2`.
 
+### v1.13.3 — Root-cause fix for skipped device deletion + delete-state reconciliation tool
+
+- **Root-cause fix for skipped deletion (v1.13.3)**: re-transferring a file that had previously reached "deleted (DONE)" left its DB delete state at `DONE`, permanently excluding it from `get_phone_transferred_files()`, so the manual "delete only transferred files", Pre-1 GC and Phase 6 all skipped it and the real file stayed on the device. Fixed by explicitly resetting `phone_delete_state='PENDING'` / `deleted_at=NULL` in the DONE branch of `update_phone_transfer_state()`.
+- **Delete timestamp recorded (v1.13.3)**: `mark_phone_delete_done_bulk()` / `mark_all_phone_delete_pending_done()` now record the deletion time in `deleted_at` (previously NULL everywhere and unused). The reset helpers (`db_maintenance` / `db_debug`) were aligned to `deleted_at=NULL` as well.
+- **Local-time unification (v1.13.3)**: `updated_at` mixed `CURRENT_TIMESTAMP` (UTC) with local time; unified on `datetime('now','localtime')` so it matches `transferred_at` / `batch_history`.
+- **Delete-state reconciliation tool (v1.13.3)**: added "Reconcile delete state (repair DB/device mismatch)" on the device page. It detects files that exist on the device while the DB records them as `DONE` and re-queues them as `PENDING` (it does not delete any real file, only fixes the state). New API `POST /api/device/reconcile_delete` and DB methods `get_phone_delete_done_files()` / `mark_phone_delete_pending_bulk()`.
+- **Version bump (v1.13.3)**: `settings.APP_VERSION` changed from `1.13.2` to `1.13.3`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.

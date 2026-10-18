@@ -116,6 +116,14 @@
 - **ドキュメント (v1.13.2)**: `docs/{ja,en}/SETTINGS.md` の 3.6 節 を 更新。
 - **バージョン更新 (v1.13.2)**: `settings.APP_VERSION` を `1.13.1` → `1.13.2` に 変更。
 
+### v1.13.3 — 端末削除 が すり抜け る 不具合 の 根治 と 削除状態 整合 ツール
+
+- **削除 すり抜け の 根治 (v1.13.3)**: 過去 に 「削除 済み (DONE)」 と なっ た ファイル を 再転送 する と 、DB の 削除 状態 が `DONE` の まま 残り 、 `get_phone_transferred_files()` の 対象 条件 から 永久 に 外れる ため 、 手動 「転送 し た ファイル のみ 削除」 ・ Pre-1 GC ・ Phase 6 の すべて が その ファイル を すり抜け る (端末 に 実 ファイル が 残り 続け る) 不具合 を 修正。 `update_phone_transfer_state()` の DONE 分岐 で `phone_delete_state='PENDING'` / `deleted_at=NULL` を 明示 的 に リセット する よう に し た 。
+- **削除 時刻 の 記録 (v1.13.3)**: `mark_phone_delete_done_bulk()` / `mark_all_phone_delete_pending_done()` で `deleted_at` に 削除 時刻 を 記録 (従来 は 全 行 NULL で 未 使用 だっ た)。 リセット 系 (`db_maintenance` / `db_debug`) も `deleted_at=NULL` に 揃え た 。
+- **時刻 の ローカル 統一 (v1.13.3)**: `updated_at` の 既定 値 と 更新 が `CURRENT_TIMESTAMP` (UTC) と ローカル 時刻 で 混在 し て い た ため 、 `datetime('now','localtime')` に 統一。 `transferred_at` / `batch_history` と 同じ 基準 に なっ た 。
+- **削除状態 整合 ツール (v1.13.3)**: 端末ページ に 「削除状態を整合 (DBと実機のズレを修復)」 を 追加。 端末 に 実在 する の に DB が `DONE` と 記録 し て いる ファイル を 検出 し `PENDING` へ 戻す (実 ファイル は 削除 せず 、 状態 の み 修復)。 新 API `POST /api/device/reconcile_delete` / DB メソッド `get_phone_delete_done_files()` ・ `mark_phone_delete_pending_bulk()`。
+- **バージョン更新 (v1.13.3)**: `settings.APP_VERSION` を `1.13.2` → `1.13.3` に 変更。
+
 ### v1.9.0 — macOS / Linux 対応 (ベストエフォート)
 
 - **macOS / Linux 対応 (v1.9.0)**: これ まで Windows 専用 だっ た 構成 を macOS / Linux で も 起動 ・ 実行 でき る よう に し た (ベストエフォート)。実機 の macOS で の 動作 確認 は 未 実施。

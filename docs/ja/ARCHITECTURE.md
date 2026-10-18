@@ -224,6 +224,7 @@ GET  /api/device/workdir              端末 作業フォルダ 取得
 POST /api/device/workdir              端末 作業フォルダ 変更 (DCIM 配下 のみ, config 保存)
 GET  /api/device/browse               DCIM 配下 サブフォルダ 一覧 (?path=)
 POST /api/device/delete_uploaded      NAS2GP が 転送 し た ファイル のみ 削除 (安全版)
+POST /api/device/reconcile_delete     削除 状態 の 整合 (端末 に 実在 する の に DB が DONE の 行 を PENDING へ 戻す)
 POST /api/open_path                   フォルダを開く
 POST /api/start                       同期開始
 POST /api/stop                        即時停止

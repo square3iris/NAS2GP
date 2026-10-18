@@ -455,6 +455,12 @@ WORDS = {
     "web.device.dcim_confirm_final": "⚠️ Final confirmation. Delete everything under /sdcard/DCIM? This cannot be undone.",
     "web.device.dcim_title": "Delete-all-under-DCIM result",
     "web.device.dcim_reconciled": "Reconciled pending deletions to DONE: {n}",
+    "web.device.reconcile_note": "Note: detects files that still exist on the device while the DB records them as already deleted, and re-queues them for deletion. It does not delete any real file, only fixes the state (afterwards use 'Delete only files transferred by NAS2GP' to remove them).",
+    "web.device.reconcile_btn": "🧭 Reconcile delete state (repair DB/device mismatch)",
+    "web.device.reconcile_running": "Reconciling...",
+    "web.device.reconcile_result": "Files on device: {device} / Mismatched with DB: {stale} / Re-queued for deletion: {fixed}",
+    "web.device.reconcile_none": "No mismatch found (the DB and the device are consistent).",
+    "web.device.reconcile_error": "Error: {err}",
 
     # --- Management screen (management.html) ---
     "web.mgmt.open.title": "📂 Open related folders",
