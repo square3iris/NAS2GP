@@ -14,11 +14,11 @@ Google Photos アプリの標準バックアップ完了を確認したうえで
           [Windows PC ブラウザ / コンソール]
                      |
                      v
-   entry_web.py / app.py / db_admin.py   (薄いエントリポイント)
+   source/entry_web.py / app.py / db_admin.py   (薄いエントリポイント)
                      |
                      v
    +================================================================+
-   |          pixel_sync (メインパッケージ - 7 サブパッケージ)          |
+   |          nas2gp (メインパッケージ - 7 サブパッケージ)              |
    +================================================================+
     | Layer 1: core/ (横断共通基盤)
     |   settings.py / logger.py / util.py / config.py / config_loader.py
@@ -32,7 +32,7 @@ Google Photos アプリの標準バックアップ完了を確認したうえで
     | Layer 3: device/ (端末 / ADB)  ← 安定化・性能改善の重点レイヤ
     |   adb.py    (retry / 自動再接続 / shell probe 疎通確認 / health)
     |   ui.py     (wake / unlock / scroll_to_top / prepare_ui)
-    |   pixel.py  (push + scan_media_batch 一括化)
+    |   device.py  (push + scan_media_batch 一括化)
     |
     | Layer 4: worker/ (同期フロー制御)
     |   sync_flow.py      (全体フェーズ制御 INIT/SCAN/UPLOAD/WAIT/DELETE/FINALIZE)
@@ -71,13 +71,13 @@ Google Photos アプリの標準バックアップ完了を確認したうえで
 
 | パッケージ | 役割 | 主なファイル |
 |---|---|---|
-| `pixel_sync.core/` | 共通基盤 | `settings.py`, `logger.py`, `i18n.py`, `util.py`, `config.py`, `config_loader.py`, `events.py`, `control.py`, `maintenance.py`, `diagnostics.py`, `disconnect_log.py`, `lang/{ja,en}.py` |
-| `pixel_sync.device/` | 端末 操作・ADB 抽象 | `adb.py`, `ui.py`, `pixel.py` |
-| `pixel_sync.scanner/` | ローカルファイル走査 | `local.py` |
-| `pixel_sync.storage/` | DB 層 | `db.py`, `db_batch.py`, `db_stats.py`, `db_view.py`, `db_debug.py`, `db_maintenance.py`, `media.py` |
-| `pixel_sync.uploader/` | バッチ転送ロジック | `flow.py` |
-| `pixel_sync.worker/` | 同期フロー制御 | `sync_flow.py`, `backup_waiter.py` |
-| `pixel_sync.ui_web/` | Web UI (FastAPI + Jinja2 + SSE) | `main.py`, `templates/*.html` |
+| `nas2gp.core/` | 共通基盤 | `settings.py`, `logger.py`, `i18n.py`, `util.py`, `config.py`, `config_loader.py`, `events.py`, `control.py`, `maintenance.py`, `diagnostics.py`, `disconnect_log.py`, `lang/{ja,en}.py` |
+| `nas2gp.device/` | 端末 操作・ADB 抽象 | `adb.py`, `ui.py`, `device.py` |
+| `nas2gp.scanner/` | ローカルファイル走査 | `local.py` |
+| `nas2gp.storage/` | DB 層 | `db.py`, `db_batch.py`, `db_stats.py`, `db_view.py`, `db_debug.py`, `db_maintenance.py`, `media.py` |
+| `nas2gp.uploader/` | バッチ転送ロジック | `flow.py` |
+| `nas2gp.worker/` | 同期フロー制御 | `sync_flow.py`, `backup_waiter.py` |
+| `nas2gp.ui_web/` | Web UI (FastAPI + Jinja2 + SSE) | `main.py`, `templates/*.html` |
 
 ---
 
@@ -159,7 +159,7 @@ S2: 端末 再起動 (reboot_device, 再起動後 待機 45 秒)
 
 ### 4.1 DB の格納場所
 
-実運用の DB は `database/nas2gp.db` です (`database/.gitkeep` によりフォルダは追跡)。
+実運用の DB は `source/database/nas2gp.db` です (`source/database/.gitkeep` によりフォルダは追跡)。
 統計・一覧の参照は必ず `db_view.py` の読み取り専用接続 (`mode=ro` + `busy_timeout`) を使い、
 書き込みプロセスとの競合を避けます。
 
@@ -174,7 +174,7 @@ S2: 端末 再起動 (reboot_device, 再起動後 待機 45 秒)
 | `/` | `index.html` | ホーム: 開始 / 停止 / 今回のバッチで終了 / ステータスバナー / 工程インジケータ / 接続デバイス |
 | `/console` | `console.html` | コンソール: 直近ログ (SSE) / 種別フィルタ |
 | `/settings` | `settings.html` | 設定: スキーマ駆動 (工程順 9 グループ + 各説明) / 言語切替 |
-| `/pixel` | `pixel.html` | 端末: デバイス詳細 / 手動操作 |
+| `/device` | `device.html` | 端末: デバイス詳細 / 手動操作 |
 | `/management` | `management.html` | 管理: ファイル一覧 (列独立フィルタ + ページング) + 3 OPEN + 3 RESET (OLD rename + 多段確認) |
 | `/stats` | `stats.html` | 統計 (分析専用): 期間切替 (24 時間 / 7 日 / 30 日) + 時系列グラフ (転送量・件数・速度・電池・温度) |
 | `/diagnostics` | `diagnostics.html` | 診断: デバイス情報 / DB 状態 / 言語整合性 / バグレポート ZIP |
@@ -212,8 +212,10 @@ GET  /api/diagnostics/bugreport       バグレポート ZIP 生成
 POST /api/maintenance/reset_progress  進捗リセット
 POST /api/maintenance/reset_settings  設定リセット
 POST /api/maintenance/factory_reset   工場出荷時リセット
-GET  /api/pixel/folders               端末 フォルダ一覧
-POST /api/pixel/delete_uploaded       NAS2GP が 転送 し た ファイル のみ 削除 (安全版)
+GET  /api/device/workdir              端末 作業フォルダ 取得
+POST /api/device/workdir              端末 作業フォルダ 変更 (DCIM 配下 のみ, config 保存)
+GET  /api/device/browse               DCIM 配下 サブフォルダ 一覧 (?path=)
+POST /api/device/delete_uploaded      NAS2GP が 転送 し た ファイル のみ 削除 (安全版)
 POST /api/open_path                   フォルダを開く
 POST /api/start                       同期開始
 POST /api/stop                        即時停止
@@ -226,16 +228,16 @@ GET  /progress/sse                    進捗 SSE
 ## 6. 多言語 i18n アーキテクチャ (単語バンク 3 階層合成)
 
 ```
-最下層 (マスター / 100% 保証):  pixel_sync.core.lang.ja.WORDS
+最下層 (マスター / 100% 保証):  nas2gp.core.lang.ja.WORDS
           ↓  不足キーは最終的にこの値が残る
-中間層 (英語選択時に上書き):   pixel_sync.core.lang.en.WORDS
+中間層 (英語選択時に上書き):   nas2gp.core.lang.en.WORDS
           ↓  部分 / 全部を上書き可
-最上層 (ユーザー自由カスタム): config/lang/{言語コード}.json
+最上層 (ユーザー自由カスタム): source/config/lang/{言語コード}.json
           { "label": "表示名", "words": { "web.btn.start": "始める", ... } }
 ```
 
 - **部分翻訳 OK**: `words` に任意のキーだけ書けば、残りは自動的に下層 (最悪 JA) が残るため UI は壊れません。
-- **動的スキャン**: `i18n.list_available_languages()` が `config/lang/*.json` を glob し、起動時 / 設定保存時に言語リストへ追加します。
+- **動的スキャン**: `i18n.list_available_languages()` が `source/config/lang/*.json` を glob し、起動時 / 設定保存時に言語リストへ追加します。
 - **診断 API**: `i18n.diagnose_wordbank(code)` が不足キー数 / JA-EN キー一致 / 重複 / 外部 JSON 情報を返し、診断ページの言語整合性カードに反映します。
 - **スキーマ merge**: `config_loader._merge_missing_schema()` が旧 config に不足するキーをデフォルト値で補完し、KeyError を防ぎます。
 - フロント JS は `window.I18N` (テンプレートと同じ辞書) を参照し、文言を統一します。

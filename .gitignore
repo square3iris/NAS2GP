@@ -1,23 +1,23 @@
 # ============================================
-# NAS2GP - v1.7.20
-# リポジトリ直下 に ソースコード 本体 を 配置 (旧 work/ は 廃止)
+# NAS2GP - v1.8.0
+# source/ 配下 に ソースコード 本体 を 配置 (archive/ は リリース版 スナップショット)
 # ============================================
 
 # ---------- Database ----------
 # 個人情報 ・ 大量データ の ため 絶対 commit し ない
-database/*.db
-database/*.db-journal
-database/*.db-wal
-database/*.db-shm
+**/database/*.db
+**/database/*.db-journal
+**/database/*.db-wal
+**/database/*.db-shm
 
 # ---------- Logs ----------
-logs/*
-!logs/.gitkeep
+**/logs/*
+!**/logs/.gitkeep
 
 # ---------- Config ----------
 # 個別 環境 設定 / ウィンドウ位置 は commit し ない
-config/config_ui.json
-config/window_state.json
+**/config/config_ui.json
+**/config/window_state.json
 
 # ---------- Python ----------
 __pycache__/
@@ -31,7 +31,7 @@ venv/
 env/
 
 # ---------- Test media / temporary ----------
-tests/sample_media/
+**/tests/sample_media/
 testfile/
 *.tmp
 *.swp

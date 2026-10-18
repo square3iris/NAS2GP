@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="card">
+    <h2>{{ tr('web.device.title') }}</h2>
+    <div id="px-current" class="small" style="margin-top:6px">--</div>
+    <div id="px-free" class="small" style="margin-top:2px">--</div>
+    <div class="small" style="margin:6px 0 12px">{{ tr('web.device.workdir_note') }}</div>
+
+    <div class="btns">
+      <button class="ghost" onclick="loadWorkdir()">{{ tr('web.device.reload') }}</button>
+      <button onclick="toggleBrowser()">{{ tr('web.device.workdir_change') }}</button>
+    </div>
+
+    <div id="px-browser" style="display:none; margin-top:12px; border-top:1px solid #334155; padding-top:12px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+        <button class="ghost" id="px-up" style="display:none" onclick="browseParent()">{{ tr('web.device.browse_up') }}</button>
+        <span class="small" id="px-bpath" style="color:var(--accent); word-break:break-all"></span>
+      </div>
+      <div id="px-folders"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="start" onclick="useCurrentFolder()">{{ tr('web.device.browse_use') }}</button>
+      </div>
+    </div>
+
+    <div style="margin-top:16px; border-top:1px solid #334155; padding-top:12px;">
+      <div class="small" style="margin-bottom:8px">{{ tr('web.device.uploaded_note') }}</div>
+      <button class="warnb" onclick="callDeleteUploaded()">{{ tr('web.device.delete_uploaded') }}</button>
+    </div>
+
+    <div id="px-msg" class="small" style="margin-top:10px; min-height:16px;"></div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PX_DCIM_ROOT = '/sdcard/DCIM';
+let _pxWorkDir = '';
+let _pxBrowsePath = PX_DCIM_ROOT;
+let _pxBrowseParent = null;
+
+function _pxMsg(text, color){
+  const el = $('px-msg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = color || 'var(--sub)';
+}
+
+function _pxParentOf(p){
+  p = String(p || '').replace(/\/+$/, '');
+  if (!p || p === PX_DCIM_ROOT || !p.startsWith(PX_DCIM_ROOT + '/')) return null;
+  const par = p.slice(0, p.lastIndexOf('/'));
+  return par.startsWith(PX_DCIM_ROOT) ? par : PX_DCIM_ROOT;
+}
+
+async function loadWorkdir(){
+  try {
+    const r = await fetch('/api/device/workdir').then(x => x.json());
+    if (!r.ok) {
+      _pxWorkDir = '';
+      $('px-current').innerHTML = `${t('web.device.workdir_current')} <span style="color:var(--err)">${esc(r.error || t('web.device.fetch_fail'))}</span>`;
+      $('px-free').textContent = '--';
+      return;
+    }
+    _pxWorkDir = r.path || '';
+    $('px-current').innerHTML = `${t('web.device.workdir_current')} <b style="color:var(--ok)">${esc(_pxWorkDir)}</b>`;
+    $('px-free').innerHTML = `${t('web.device.free')}<b style="color:var(--ok)">${Number(r.free_gb || 0).toFixed(2)} GB</b>`;
+  } catch(e){
+    _pxWorkDir = '';
+    $('px-current').textContent = tf('web.device.fetch_fail', {err: e});
+    $('px-free').textContent = '--';
+  }
+}
+
+function toggleBrowser(){
+  const box = $('px-browser');
+  if (!box.style.display || box.style.display === 'none') {
+    box.style.display = 'block';
+    browseTo(_pxParentOf(_pxWorkDir) || PX_DCIM_ROOT);
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+async function browseTo(path){
+  _pxMsg('');
+  try {
+    const r = await fetch('/api/device/browse?path=' + encodeURIComponent(path || '')).then(x => x.json());
+    if (!r.ok) {
+      $('px-folders').innerHTML = '';
+      $('px-bpath').textContent = '';
+      $('px-up').style.display = 'none';
+      _pxMsg(tf('web.device.browse_fail', {err: r.error || ''}), 'var(--err)');
+      return;
+    }
+    _pxBrowsePath = r.path || path || PX_DCIM_ROOT;
+    _pxBrowseParent = r.parent || null;
+    $('px-up').style.display = _pxBrowseParent ? 'inline-block' : 'none';
+    const inUse = (_pxBrowsePath === (_pxWorkDir || ''));
+    $('px-bpath').innerHTML = esc(_pxBrowsePath) + (inUse ? ` <span style="color:var(--ok)">${t('web.device.current_mark')}</span>` : '');
+    const list = r.folders || [];
+    if (!list.length) {
+      $('px-folders').innerHTML = '<div class="small">' + t('web.device.browse_empty') + '</div>';
+      return;
+    }
+    $('px-folders').innerHTML = list.map(f => `
+      <div style="padding:6px 8px; border-bottom:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <span class="px-folder" data-p="${esc(f.path || '')}" style="cursor:pointer; flex:1; word-break:break-all;">📁 ${esc(f.name || '')}</span>
+        <button class="ghost" data-set="${esc(f.path || '')}">${t('web.device.browse_use_short')}</button>
+      </div>`).join('');
+    $('px-folders').querySelectorAll('.px-folder').forEach(el => { el.onclick = () => browseTo(el.dataset.p); });
+    $('px-folders').querySelectorAll('[data-set]').forEach(el => { el.onclick = () => setWorkdir(el.dataset.set); });
+  } catch(e){
+    _pxMsg(tf('web.device.browse_fail', {err: e}), 'var(--err)');
+  }
+}
+
+function browseParent(){
+  if (_pxBrowseParent) browseTo(_pxBrowseParent);
+}
+
+function useCurrentFolder(){
+  setWorkdir(_pxBrowsePath);
+}
+
+async function setWorkdir(path){
+  if (!path) { _pxMsg(t('web.device.set_no_path'), 'var(--err)'); return; }
+  if (!confirm(tf('web.device.set_confirm', {path: path}))) return;
+  try {
+    const r = await fetch('/api/device/workdir', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: path}),
+    }).then(x => x.json());
+    if (r.ok) {
+      _pxMsg(tf('web.device.set_ok', {path: r.path || path}), 'var(--ok)');
+      await loadWorkdir();
+      browseTo(_pxBrowsePath);
+    } else {
+      _pxMsg(tf('web.device.set_fail', {err: r.error || ''}), 'var(--err)');
+    }
+  } catch(e){
+    _pxMsg(tf('web.device.set_fail', {err: e}), 'var(--err)');
+  }
+}
+
+function _fmtDeleteResult(title, j){
+  j = j || {};
+  const targets = Array.isArray(j.targets) ? j.targets : [];
+  const lines = [];
+  lines.push(j.ok === true ? t('web.device.del.ok') : t('web.device.del.ng'));
+  lines.push(tf('web.device.del.targets', {targets: (targets.length ? targets.join(', ') : t('web.device.del.none'))}));
+  lines.push(tf('web.device.del.result', {ok: j.ok_cnt||0, err: j.err_cnt||0, total: j.total||0}));
+  if (typeof j.free_gb_after === 'number') lines.push(tf('web.device.del.free_after', {gb: j.free_gb_after.toFixed(2)}));
+  if (j.error) lines.push(tf('web.device.del.error', {err: j.error}));
+  if (Array.isArray(j.logs) && j.logs.length) {
+    lines.push('');
+    lines.push(t('web.device.del.detail'));
+    lines.push(j.logs.join('\n'));
+  }
+  alert(title + '\n\n' + lines.join('\n'));
+}
+
+async function callDeleteUploaded(){
+  if (!confirm(t('web.device.confirm_uploaded'))) return;
+  try {
+    const r = await fetch('/api/device/delete_uploaded', { method:'POST' });
+    const j = await r.json();
+    _fmtDeleteResult(t('web.device.uploaded_title'), j);
+    loadWorkdir();
+  } catch(e){ alert(tf('web.device.uploaded_fail', {err: e})); }
+}
+
+loadWorkdir();
+</script>
+{% endblock %}

@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-18
 
-Settings are edited from the Web UI **Settings** page (schema-driven) and saved to `config/config_ui.json`.
+Settings are edited from the Web UI **Settings** page (schema-driven) and saved to `source/config/config_ui.json`.
 The page items are defined by the backend `_settings_ui_schema()` and are ordered as **9 groups** that
 follow the batch pipeline (stages 1-7). Each group shows an on-screen description of "which stage it
 belongs to", and each item shows "what changes when you edit it", making the meaning and impact clear.
@@ -13,32 +13,44 @@ belongs to", and each item shows "what changes when you edit it", making the mea
 
 ```
 NAS2GP/ (repository root)
-├── config/
-│   ├── config_ui.json   <- persisted settings (created on first run / save)
-│   ├── backups/         <- automatic DB backups (.bak.YYYYMMDD-HHMMSS, 5 generations)
-│   ├── cache/           <- temporary files
-│   └── lang/            <- external i18n language JSON (partial / full custom)
-├── database/
-│   └── nas2gp.db    <- SQLite3 DB (production location)
-└── logs/                <- runtime logs
+├── README.md
+├── LICENSE
+├── .gitignore
+├── docs/                  <- documentation (ja / en)
+├── archive/
+│   └── v1.8.0/            <- snapshot of the released version
+└── source/                <- entry points, package and runtime data
+    ├── app.py / entry_web.py / db_admin.py   <- entry points
+    ├── nas2gp/            <- main package
+    ├── bin/               <- .cmd launchers
+    ├── scripts/           <- helper scripts
+    ├── config/
+    │   ├── config_ui.json   <- persisted settings (created on first run / save)
+    │   ├── backups/         <- automatic DB backups (.bak.YYYYMMDD-HHMMSS, 5 generations)
+    │   ├── cache/           <- temporary files
+    │   └── lang/            <- external i18n language JSON (partial / full custom)
+    ├── database/
+    │   └── nas2gp.db    <- SQLite3 DB (production location)
+    └── logs/                <- runtime logs
 ```
 
 ---
 
-## 2. config_ui.json (Schema Version 9)
+## 2. config_ui.json (Schema Version 10)
 
 On first launch or when loading an older file, missing keys are auto-filled with defaults
 (`config_loader._merge_missing_schema`). Older files do not cause KeyError.
 
 ```json
 {
-  "CONFIG_SCHEMA_VERSION": 9,
+  "CONFIG_SCHEMA_VERSION": 10,
   "LANGUAGE": "auto",
   "PHOTO_DIR": "D:/Photos",
+  "DEVICE_WORK_DIR": "/sdcard/DCIM/NAS2GP",
   "BATCH_STRATEGY": "hybrid",
   "MAX_FILES_PER_BATCH": 30,
   "MAX_BYTES_PER_BATCH": 2147483648,
-  "PIXEL_STORAGE_MARGIN_GB": 4.0,
+  "DEVICE_STORAGE_MARGIN_GB": 4.0,
   "ADB_TIMEOUT": 60,
   "ADB_PUSH_RETRY": 3,
   "ADB_RECOVER_MIN_INTERVAL_SEC": 45.0,
@@ -66,7 +78,7 @@ On first launch or when loading an older file, missing keys are auto-filled with
 ```
 
 > **Note (DB path)**: the DB path is not configurable via a settings key. `settings.DB_FILE`
-> (`database/nas2gp.db`) is the single source of truth; the writer (`Database`),
+> (`source/database/nas2gp.db`) is the single source of truth; the writer (`Database`),
 > diagnostics, and reset all reference the same real file via `settings.resolve_db_file()`.
 
 ---
@@ -80,8 +92,9 @@ shows "what changes when you edit it". The groups below are listed in pipeline o
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `LANGUAGE` | select | `auto` | UI / log language. `ja` / `en` / `auto` (follow OS) / an external language in `config/lang/*` |
+| `LANGUAGE` | select | `auto` | UI / log language. `ja` / `en` / `auto` (follow OS) / an external language in `source/config/lang/*` |
 | `PHOTO_DIR` | text | `D:/Photos` | Source root (NAS / SMB / local). Change it to your own photo folder |
+| `DEVICE_WORK_DIR` | text | `/sdcard/DCIM/NAS2GP` | Device-side working folder (transfer + delete target). **DCIM-only**; folders under DCIM are auto-backed up by Google Photos. Also changeable from the device page |
 
 ### 3.2 (1) Capacity and batch split (CAPACITY)
 
@@ -93,7 +106,7 @@ transfer -> backup -> delete cycle repeats per batch of this size.
 | `BATCH_STRATEGY` | select | `hybrid` | Criterion to end a batch: `count` (file count) / `bytes` (size) / `hybrid` (both) |
 | `MAX_FILES_PER_BATCH` | int | `30` | Max files per batch |
 | `MAX_BYTES_PER_BATCH` | gb | `2` GB | Max size per batch (edited in GB) |
-| `PIXEL_STORAGE_MARGIN_GB` | gb | `4.0` GB | Minimum free-space margin to keep on the device |
+| `DEVICE_STORAGE_MARGIN_GB` | gb | `4.0` GB | Minimum free-space margin to keep on the device |
 
 **Batch-end criteria**
 - `count`: split by file count (`MAX_FILES_PER_BATCH`) only
@@ -190,7 +203,7 @@ Public settings for this Web screen itself. Changes require restarting the app (
 
 Steps to add a language other than Japanese/English (e.g. German `de`) and customize the wording.
 
-### Step 1. Create `config/lang/de.json`
+### Step 1. Create `source/config/lang/de.json`
 
 ```json
 {
@@ -214,10 +227,10 @@ the Settings language dropdown. Selecting and saving reloads the page, retransla
 ### Step 3. (Optional) Integrity check
 
 The Diagnostics page's language card shows missing keys / duplicates / external JSON info.
-You can also check via CLI:
+You can also check via CLI (run with the `source` folder as the current directory):
 
 ```powershell
-python -c "from pixel_sync.core import i18n; print(i18n.diagnose_wordbank('de'))"
+python -c "from nas2gp.core import i18n; print(i18n.diagnose_wordbank('de'))"
 ```
 
 ---
@@ -249,19 +262,21 @@ Simply open the target folder in the OS file manager (nothing is deleted).
 | Button | Operation | How to recover |
 |---|---|---|
 | Reset progress | Move the DB file + WAL/SHM journal + old backup DBs to OLD | Remove the prefix from the filename |
-| Reset settings | Move `config/config_ui.json` to OLD | same as above |
+| Reset settings | Move `source/config/config_ui.json` to OLD | same as above |
 | Factory reset | Move everything in the DB folder + settings + past logs (`*.log`) to OLD | same as above |
 
 > Important operations such as factory reset use a 2-3 step inline confirmation to prevent mistakes.
 
 ### 5.3 DB Maintenance CLI
 
+Run the following with the `source` folder as the current directory.
+
 ```powershell
 # integrity check
-python -m pixel_sync.storage.db_debug
+python -m nas2gp.storage.db_debug
 
 # VACUUM + 5-generation backup
-python -m pixel_sync.storage.db_maintenance
+python -m nas2gp.storage.db_maintenance
 
 # force-reset only ADB-error rows to PENDING
 python db_admin.py reset-failed
@@ -324,7 +339,7 @@ settings provide automatic recovery and safe stop.
 ### 6.6 Analyzing the cause of a disconnect (disconnect analysis log)
 
 To diagnose a disconnect that happened during a long evaluation run, keep `DISCONNECT_LOG_ENABLED`
-enabled (the default). Because `logs/health.jsonl` keeps the battery trend, you can tell whether the
+enabled (the default). Because `source/logs/health.jsonl` keeps the battery trend, you can tell whether the
 disconnect was a "gradual battery depletion" (level dropping step by step) or a "sudden disconnect"
 (plenty of charge left = cable / ADB failure) from the trend. A smaller
 `DISCONNECT_HEARTBEAT_INTERVAL_SEC` records finer detail, at the cost of more frequent recording

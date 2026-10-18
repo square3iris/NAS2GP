@@ -86,7 +86,7 @@ adb devices
 ### Step 4. 依存パッケージのインストール
 
 ```powershell
-cd <NAS2GP を配置したフォルダ>
+cd <NAS2GP を配置したフォルダ>\source
 
 # 仮想環境 (推奨)
 python -m venv .venv
@@ -106,7 +106,7 @@ python entry_web.py
 
 1. **PHOTO_DIR**: 写真フォルダ (例 `D:\Photos` / NAS なら `\\NAS\Photos`)
 2. **バッチ戦略 / バッチサイズ / バッチ最大容量 GB**: 写真中心なら 件数多め・容量小さめ、動画中心なら容量優先
-3. **言語**: 日本語 / English (または `config/lang/` に追加した外部言語)
+3. **言語**: 日本語 / English (または `source/config/lang/` に追加した外部言語)
 4. **保存** をクリック
 
 ### Step 6. 少量ファイルでのテスト実行
@@ -120,10 +120,10 @@ python entry_web.py
 
 ## 3. 起動方法 (Web / CLI)
 
-いずれも **アプリを配置したフォルダ (リポジトリルート)** をカレントディレクトリにして実行します。
+いずれも **`source` フォルダ** をカレントディレクトリにして実行します。
 
 ```powershell
-cd <NAS2GP を配置したフォルダ>
+cd <NAS2GP を配置したフォルダ>\source
 ```
 
 ### Web UI 起動 (通常はこちら)
@@ -145,7 +145,7 @@ python app.py             # 直接実行 (推奨)
 bin\start_app.cmd         # .cmd ランチャー経由
 ```
 
-`config/config_ui.json` の設定を自動使用し、標準出力に各フェーズの進捗とエラーを表示します。
+`source/config/config_ui.json` の設定を自動使用し、標準出力に各フェーズの進捗とエラーを表示します。
 
 ---
 
@@ -175,9 +175,9 @@ bin\start_app.cmd         # .cmd ランチャー経由
 
 推奨: 毎月第 1 日曜日など曜日を固定して実施します。
 
-1. **DB バックアップの確認**: 自動バックアップは `config/backups/` に 5 世代保持されます。古い `.bak` は任意で削除してください。
-2. **手動 VACUUM**: 管理 ページ → DB フォルダを開く → CLI で `python -m pixel_sync.storage.db_maintenance`
-3. **容量確認**: `database/nas2gp.db` のサイズが大きい場合は VACUUM の頻度を上げてください。
+1. **DB バックアップの確認**: 自動バックアップは `source/config/backups/` に 5 世代保持されます。古い `.bak` は任意で削除してください。
+2. **手動 VACUUM**: 管理 ページ → DB フォルダを開く → CLI で `python -m nas2gp.storage.db_maintenance`
+3. **容量確認**: `source/database/nas2gp.db` のサイズが大きい場合は VACUUM の頻度を上げてください。
 4. **ADB / Platform Tools 更新**: 半年に 1 回程度で十分です。
 5. **言語整合性**: 診断 ページで不足キーが増えていないか確認 (増えていれば該当 JSON の `words` へ追記)。
 
@@ -192,7 +192,7 @@ bin\start_app.cmd         # .cmd ランチャー経由
 | 1 | `adb devices` が `unauthorized` | USB デバッグ許可の拒否 / PC 鍵の不一致 | 開発者オプション → USB デバッグ認証を一度取り消す → 再接続 → 再許可 |
 | 2 | `adb devices` が `no devices` / `offline` | ケーブル不良 / 充電専用ケーブル / USB 設定 | 純正ケーブルに交換 / USB 設定を「ファイル転送」に / `adb kill-server ; adb start-server` |
 | 3 | 起動時に `No module named 'fastapi' / 'uvicorn' / 'jinja2'` | Web UI 依存が未導入 | `.venv` を activate して `pip install uvicorn fastapi jinja2` |
-| 4 | 起動時に `No module named 'pixel_sync'` | カレントディレクトリがリポジトリルートでない | `cd` でアプリのフォルダ (リポジトリルート) に移動してから起動 |
+| 4 | 起動時に `No module named 'nas2gp'` | カレントディレクトリが `source` フォルダでない | `cd` で `source` フォルダに移動してから起動 |
 
 ### 6.2 SCAN / DB
 
@@ -201,7 +201,7 @@ bin\start_app.cmd         # .cmd ランチャー経由
 | 5 | スキャン時に「PHOTO_DIR が存在しません」 | PHOTO_DIR 不在 / UNC アクセス権なし | ネットワークドライブを再接続 → 設定 ページで PHOTO_DIR を再選択 |
 | 6 | 同じ画像が繰り返し転送される | NAS 側でサイズ / 更新日時が変化し重複排除が効かない | 管理 ページ → 進捗リセット (将来版でハッシュ判定を予定) |
 | 7 | `database is locked` | 同一 DB へ CLI と Web が同時アクセス | Web UI と CLI を同時起動しない |
-| 8 | DB が破損 / SELECT エラー | PC 突然停止 / ディスク不良 | `config/backups/` の最新 `.bak` を `database/nas2gp.db` へ戻して復元 |
+| 8 | DB が破損 / SELECT エラー | PC 突然停止 / ディスク不良 | `source/config/backups/` の最新 `.bak` を `source/database/nas2gp.db` へ戻して復元 |
 
 ### 6.3 UPLOAD / ADB push
 
@@ -235,7 +235,7 @@ bin\start_app.cmd         # .cmd ランチャー経由
 |---|---|---|---|
 | 20 | コンソールページにログが出ない | SSE (`/api/logs/sse`) が未接続 | ブラウザをリロード / サーバーが起動しているか確認 |
 | 21 | 重要ログが出ない | ログ種別フィルタが絞られている | フィルタを ALL に戻す |
-| 22 | 設定を保存したのに次回起動で消える | `config/config_ui.json` の保存権限 / リポジトリフォルダが読み取り専用 | リポジトリフォルダの所有権 / NTFS 権限を確認 |
+| 22 | 設定を保存したのに次回起動で消える | `source/config/config_ui.json` の保存権限 / リポジトリフォルダが読み取り専用 | リポジトリフォルダの所有権 / NTFS 権限を確認 |
 | 23 | 言語を切り替えても一部が別言語のまま | i18n のキー不足 (診断ページで検出可) | 診断 ページの言語整合性を確認 → 外部 JSON の `words` へ追記 |
 | 24 | 他 PC / スマホからアクセスできない | `127.0.0.1` バインド / ファイアウォール | 設定で `WEB_SERVER_HOST = 0.0.0.0` に変更 → 再起動 / ポート 8000 を許可 |
 | 25 | リセットしても元に戻らない (と感じる) | OLD rename 方式のため実体は残る (正しい仕様) | 管理 ページで対象フォルダを開き `_OLD_` 付きファイルから手動で戻す |
@@ -262,9 +262,9 @@ bin\start_app.cmd         # .cmd ランチャー経由
 ### 事象 A: DB が破損し SELECT できない
 
 1. 落ち着く: NAS の元ファイルは一切触っていません。最悪でも全件再送で済みます。
-2. `config/backups/` を開き、直近の正常なバックアップ (`.bak.YYYYMMDD-HHMMSS`) を選ぶ。
+2. `source/config/backups/` を開き、直近の正常なバックアップ (`.bak.YYYYMMDD-HHMMSS`) を選ぶ。
 3. アプリを完全終了する。
-4. `database/nas2gp.db` をどけて、手順 2 のコピーを `database/nas2gp.db` にリネームする。
+4. `source/database/nas2gp.db` をどけて、手順 2 のコピーを `source/database/nas2gp.db` にリネームする。
 5. 再起動。SKIP 済み分はスキップされ、未送信の `PENDING` から再開します。
 
 ### 事象 B: 誤って Factory Reset を実行した

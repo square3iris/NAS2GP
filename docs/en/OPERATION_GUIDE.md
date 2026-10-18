@@ -86,7 +86,7 @@ adb devices
 ### Step 4. Install dependencies
 
 ```powershell
-cd <folder where NAS2GP is placed>
+cd <folder where NAS2GP is placed>\source
 
 # virtual environment (recommended)
 python -m venv .venv
@@ -106,7 +106,7 @@ Open `http://127.0.0.1:8000/` in a browser and configure on the **Settings** pag
 
 1. **PHOTO_DIR**: the photo folder (e.g. `D:\Photos`, or `\\NAS\Photos` for a NAS)
 2. **Batch strategy / batch size / max batch size (GB)**: for photo-heavy libraries prefer a larger file count and smaller size; for video-heavy, prefer size-first
-3. **Language**: Japanese / English (or an external language added under `config/lang/`)
+3. **Language**: Japanese / English (or an external language added under `source/config/lang/`)
 4. Click **Save**
 
 ### Step 6. Test run with a few files
@@ -120,10 +120,10 @@ Open `http://127.0.0.1:8000/` in a browser and configure on the **Settings** pag
 
 ## 3. How to Launch (Web / CLI)
 
-Run with the **app folder (repository root)** as the current directory.
+Run with the **`source` folder** as the current directory.
 
 ```powershell
-cd <folder where NAS2GP is placed>
+cd <folder where NAS2GP is placed>\source
 ```
 
 ### Web UI (normal case)
@@ -145,7 +145,7 @@ python app.py             # run directly (recommended)
 bin\start_app.cmd         # via the .cmd launcher
 ```
 
-It uses the settings in `config/config_ui.json` automatically and prints phase progress and errors to stdout.
+It uses the settings in `source/config/config_ui.json` automatically and prints phase progress and errors to stdout.
 
 ---
 
@@ -175,9 +175,9 @@ It uses the settings in `config/config_ui.json` automatically and prints phase p
 
 Recommended: a fixed day each month (e.g. the first Sunday).
 
-1. **Check DB backups**: automatic backups keep 5 generations under `config/backups/`. Remove old `.bak` files as you like.
-2. **Manual VACUUM**: Management page -> open the DB folder -> run `python -m pixel_sync.storage.db_maintenance`
-3. **Check size**: if `database/nas2gp.db` is large, increase VACUUM frequency.
+1. **Check DB backups**: automatic backups keep 5 generations under `source/config/backups/`. Remove old `.bak` files as you like.
+2. **Manual VACUUM**: Management page -> open the DB folder -> run `python -m nas2gp.storage.db_maintenance`
+3. **Check size**: if `source/database/nas2gp.db` is large, increase VACUUM frequency.
 4. **Update ADB / Platform Tools**: about once every six months is enough.
 5. **Language integrity**: check the Diagnostics page for new missing keys (if any, add them to the relevant JSON `words`).
 
@@ -192,7 +192,7 @@ Recommended: a fixed day each month (e.g. the first Sunday).
 | 1 | `adb devices` shows `unauthorized` | USB debugging permission denied / PC key mismatch | Developer options -> revoke USB debugging authorizations -> reconnect -> allow again |
 | 2 | `adb devices` shows `no devices` / `offline` | bad cable / charge-only cable / USB setting | use the stock cable / set USB to "File transfer" / `adb kill-server ; adb start-server` |
 | 3 | `No module named 'fastapi' / 'uvicorn' / 'jinja2'` at startup | Web UI deps not installed | activate `.venv` and run `pip install uvicorn fastapi jinja2` |
-| 4 | `No module named 'pixel_sync'` at startup | current directory is not the repository root | `cd` into the app folder (repository root) before launching |
+| 4 | `No module named 'nas2gp'` at startup | current directory is not the `source` folder | `cd` into the `source` folder before launching |
 
 ### 6.2 SCAN / DB
 
@@ -201,7 +201,7 @@ Recommended: a fixed day each month (e.g. the first Sunday).
 | 5 | "PHOTO_DIR does not exist" during scan | PHOTO_DIR missing / no UNC access | reconnect the network drive -> reselect PHOTO_DIR on Settings |
 | 6 | The same image is transferred repeatedly | NAS changed size / mtime so de-dupe fails | Management -> reset progress (hash detection planned) |
 | 7 | `database is locked` | CLI and Web access the same DB simultaneously | do not run the Web UI and CLI at the same time |
-| 8 | DB corrupted / SELECT errors | sudden PC shutdown / bad disk | restore the newest `.bak` from `config/backups/` to `database/nas2gp.db` |
+| 8 | DB corrupted / SELECT errors | sudden PC shutdown / bad disk | restore the newest `.bak` from `source/config/backups/` to `source/database/nas2gp.db` |
 
 ### 6.3 UPLOAD / ADB push
 
@@ -235,7 +235,7 @@ Recommended: a fixed day each month (e.g. the first Sunday).
 |---|---|---|---|
 | 20 | no logs on the console page | SSE (`/api/logs/sse`) not connected | reload the browser / confirm the server is running |
 | 21 | important logs missing | level filter too narrow | set the filter back to ALL |
-| 22 | settings lost after restart | save permission of `config/config_ui.json` / repository folder read-only | check ownership / NTFS permissions of the repository folder |
+| 22 | settings lost after restart | save permission of `source/config/config_ui.json` / repository folder read-only | check ownership / NTFS permissions of the repository folder |
 | 23 | some text stays in the wrong language after switching | missing i18n keys (detected on Diagnostics) | check Diagnostics language card -> add keys to the external JSON `words` |
 | 24 | cannot access from another PC / phone | bound to `127.0.0.1` / firewall | set `WEB_SERVER_HOST = 0.0.0.0` -> restart / allow port 8000 |
 | 25 | reset does not seem to take effect | OLD rename keeps the data (correct behavior) | open the target folder on Management and manually rename back from `_OLD_` files |
@@ -262,9 +262,9 @@ Recommended: a fixed day each month (e.g. the first Sunday).
 ### Case A: DB corrupted, SELECT fails
 
 1. Stay calm: your NAS originals are untouched. Worst case is a full re-send.
-2. Open `config/backups/` and pick the newest healthy backup (`.bak.YYYYMMDD-HHMMSS`).
+2. Open `source/config/backups/` and pick the newest healthy backup (`.bak.YYYYMMDD-HHMMSS`).
 3. Fully exit the app.
-4. Move `database/nas2gp.db` aside and rename the copy from step 2 to `database/nas2gp.db`.
+4. Move `source/database/nas2gp.db` aside and rename the copy from step 2 to `source/database/nas2gp.db`.
 5. Restart. Already-SKIPped files are skipped and unsent `PENDING` files resume.
 
 ### Case B: Factory Reset accidentally executed

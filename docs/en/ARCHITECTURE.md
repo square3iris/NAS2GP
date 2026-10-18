@@ -15,11 +15,11 @@ the local copies from the device. All interaction is provided through a single
           [Windows PC browser / console]
                      |
                      v
-   entry_web.py / app.py / db_admin.py   (thin entry points)
+   source/entry_web.py / app.py / db_admin.py   (thin entry points)
                      |
                      v
    +================================================================+
-   |        pixel_sync (main package - 7 sub-packages)               |
+   |        nas2gp (main package - 7 sub-packages)                   |
    +================================================================+
     | Layer 1: core/ (shared foundation)
     |   settings.py / logger.py / util.py / config.py / config_loader.py
@@ -33,7 +33,7 @@ the local copies from the device. All interaction is provided through a single
     | Layer 3: device/ (device / ADB)  <- focus of stability & performance
     |   adb.py    (retry / auto-reconnect / shell probe liveness / health)
     |   ui.py     (wake / unlock / scroll_to_top / prepare_ui)
-    |   pixel.py  (push + batched scan_media_batch)
+    |   device.py  (push + batched scan_media_batch)
     |
     | Layer 4: worker/ (sync flow control)
     |   sync_flow.py      (INIT/SCAN/UPLOAD/WAIT/DELETE/FINALIZE)
@@ -72,13 +72,13 @@ the local copies from the device. All interaction is provided through a single
 
 | Package | Role | Main files |
 |---|---|---|
-| `pixel_sync.core/` | Shared foundation | `settings.py`, `logger.py`, `i18n.py`, `util.py`, `config.py`, `config_loader.py`, `events.py`, `control.py`, `maintenance.py`, `diagnostics.py`, `disconnect_log.py`, `lang/{ja,en}.py` |
-| `pixel_sync.device/` | device operations / ADB abstraction | `adb.py`, `ui.py`, `pixel.py` |
-| `pixel_sync.scanner/` | Local file scanning | `local.py` |
-| `pixel_sync.storage/` | DB layer | `db.py`, `db_batch.py`, `db_stats.py`, `db_view.py`, `db_debug.py`, `db_maintenance.py`, `media.py` |
-| `pixel_sync.uploader/` | Batch transfer logic | `flow.py` |
-| `pixel_sync.worker/` | Sync flow control | `sync_flow.py`, `backup_waiter.py` |
-| `pixel_sync.ui_web/` | Web UI (FastAPI + Jinja2 + SSE) | `main.py`, `templates/*.html` |
+| `nas2gp.core/` | Shared foundation | `settings.py`, `logger.py`, `i18n.py`, `util.py`, `config.py`, `config_loader.py`, `events.py`, `control.py`, `maintenance.py`, `diagnostics.py`, `disconnect_log.py`, `lang/{ja,en}.py` |
+| `nas2gp.device/` | device operations / ADB abstraction | `adb.py`, `ui.py`, `device.py` |
+| `nas2gp.scanner/` | Local file scanning | `local.py` |
+| `nas2gp.storage/` | DB layer | `db.py`, `db_batch.py`, `db_stats.py`, `db_view.py`, `db_debug.py`, `db_maintenance.py`, `media.py` |
+| `nas2gp.uploader/` | Batch transfer logic | `flow.py` |
+| `nas2gp.worker/` | Sync flow control | `sync_flow.py`, `backup_waiter.py` |
+| `nas2gp.ui_web/` | Web UI (FastAPI + Jinja2 + SSE) | `main.py`, `templates/*.html` |
 
 ---
 
@@ -160,7 +160,7 @@ Each pipeline step keeps its own state in an independent column. There is no sin
 
 ### 4.1 DB Location
 
-The production database is `database/nas2gp.db` (the folder is tracked via `database/.gitkeep`).
+The production database is `source/database/nas2gp.db` (the folder is tracked via `source/database/.gitkeep`).
 Stats and listing always use the read-only connection in `db_view.py` (`mode=ro` + `busy_timeout`)
 to avoid contention with the writer process.
 
@@ -175,7 +175,7 @@ to avoid contention with the writer process.
 | `/` | `index.html` | Home: start / stop / stop after this batch / status banner / step indicator / connected device |
 | `/console` | `console.html` | Console: recent logs (SSE) / level filter |
 | `/settings` | `settings.html` | Settings: schema-driven (9 groups in pipeline order + descriptions) / language switch |
-| `/pixel` | `pixel.html` | device: device details / manual operations |
+| `/device` | `device.html` | device: device details / manual operations |
 | `/management` | `management.html` | Management: file list (independent per-column filters + paging) + 3 OPEN + 3 RESET (OLD rename + multi-step confirm) |
 | `/stats` | `stats.html` | Stats (analysis only): range switch (24h / 7d / 30d) + time-series graphs (volume, count, speed, battery, temperature) |
 | `/diagnostics` | `diagnostics.html` | Diagnostics: device info / DB state / language integrity / bug report ZIP |
@@ -213,8 +213,10 @@ GET  /api/diagnostics/bugreport       generate bug report ZIP
 POST /api/maintenance/reset_progress  reset progress
 POST /api/maintenance/reset_settings  reset settings
 POST /api/maintenance/factory_reset   factory reset
-GET  /api/pixel/folders               device folder list
-POST /api/pixel/delete_uploaded       delete only NAS2GP-transferred files (safe)
+GET  /api/device/workdir              get device working folder
+POST /api/device/workdir              change device working folder (DCIM-only, saved to config)
+GET  /api/device/browse               list DCIM subfolders (?path=)
+POST /api/device/delete_uploaded      delete only NAS2GP-transferred files (safe)
 POST /api/open_path                   open a folder
 POST /api/start                       start sync
 POST /api/stop                        stop immediately
@@ -227,16 +229,16 @@ GET  /progress/sse                    progress SSE
 ## 6. i18n Architecture (3-layer word bank composition)
 
 ```
-Bottom layer (master / guaranteed 100%):  pixel_sync.core.lang.ja.WORDS
+Bottom layer (master / guaranteed 100%):  nas2gp.core.lang.ja.WORDS
           ↓  missing keys ultimately fall back to this
-Middle layer (override when English):    pixel_sync.core.lang.en.WORDS
+Middle layer (override when English):    nas2gp.core.lang.en.WORDS
           ↓  partial / full override
-Top layer (user custom):                 config/lang/{lang_code}.json
+Top layer (user custom):                 source/config/lang/{lang_code}.json
           { "label": "Display name", "words": { "web.btn.start": "Start", ... } }
 ```
 
 - **Partial translation OK**: writing only some keys in `words` leaves the rest to the lower layers (ultimately JA), so the UI never breaks.
-- **Dynamic scan**: `i18n.list_available_languages()` globs `config/lang/*.json` and adds them to the language list at startup / on settings save.
+- **Dynamic scan**: `i18n.list_available_languages()` globs `source/config/lang/*.json` and adds them to the language list at startup / on settings save.
 - **Diagnostics API**: `i18n.diagnose_wordbank(code)` returns missing-key counts / JA-EN key parity / duplicates / external JSON info, shown on the diagnostics language card.
 - **Schema merge**: `config_loader._merge_missing_schema()` fills missing keys with defaults to prevent KeyError.
 - Frontend JS reads `window.I18N` (the same dictionary as templates) to keep wording consistent.

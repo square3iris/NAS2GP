@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block content %}
+  <style>
+    /* v1.7.19: 統計グラフ (自作 SVG / 外部依存なし) */
+    /* v1.7.19: stats charts (self-contained SVG / no external deps) */
+    .chart-box { border:1px solid #263449; border-radius:12px; padding:12px 14px; margin-top:12px; background:#0b1220; }
+    .chart-h { font-weight:700; font-size:13.5px; margin-bottom:8px; }
+    .chart-note { font-size:11.5px; color:var(--sub); margin-top:6px; }
+    .chart-legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; font-size:12px; color:var(--sub); }
+    .chart-legend span.k { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:middle; }
+    .chart-empty { font-size:12.5px; color:var(--sub); padding:10px 0; }
+    .btns button.active { outline:2px solid var(--accent); }
+  </style>
+
+  <section class="card">
+    <h2>{{ tr('web.stats.title') }}</h2>
+    <div id="file-summary" class="cards3">
+      <div class="dcard"><div class="dc-h"><span class="dot"></span>{{ tr('web.stats.loading') }}</div></div>
+    </div>
+    <div class="small" style="margin-top:10px">
+      <b>{{ tr('web.stats.col.transfer') }}</b> / <b>{{ tr('web.stats.col.gp') }}</b> / <b>{{ tr('web.stats.col.delete') }}</b> — {{ tr('web.stats.desc') }}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="btns" style="align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="small">{{ tr('web.stats.range.title') }}</span>
+      <button class="ghost" id="rg-24h">{{ tr('web.stats.range.24h') }}</button>
+      <button class="ghost" id="rg-7d">{{ tr('web.stats.range.7d') }}</button>
+      <button class="ghost" id="rg-30d">{{ tr('web.stats.range.30d') }}</button>
+      <span style="flex:1"></span>
+      <button class="ghost" id="btn-clearhist" title="{{ tr('web.stats.clear_hist_title') }}">{{ tr('web.stats.clear_hist') }}</button>
+      <button class="ghost" id="btn-clearhist-reset" style="display:none">{{ tr('web.stats.clear_hist_reset') }}</button>
+      <button class="ghost" id="btn-refresh">{{ tr('web.stats.refresh') }}</button>
+    </div>
+
+    <div id="hist-note" class="small" style="margin-top:10px"></div>
+
+    <div id="chart-volume" class="chart-box"></div>
+    <div id="chart-counts" class="chart-box"></div>
+    <div id="chart-speed"  class="chart-box"></div>
+    <div id="chart-battery" class="chart-box"></div>
+    <div id="chart-temp"   class="chart-box"></div>
+
+    <div class="small" style="margin-top:12px">
+      {{ tr('web.stats.hint.counts') }}<br>{{ tr('web.stats.hint.health') }}
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ============================================================
+// v1.7.19: 統計 時系列 グラフ (自作 SVG ヘルパ)
+// v1.7.19: stats time-series charts (self-contained SVG helpers)
+// ============================================================
+const C_PL=54, C_PR=14, C_PT=12, C_PB=26;
+
+function _niceMax(v){
+  v = Number(v)||0;
+  if (!(v > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  return Math.ceil(v / p) * p;
+}
+function _ticks(min, max, n){
+  const out=[]; for (let i=0;i<=n;i++) out.push(min + (max-min)*i/n); return out;
+}
+function _gridStr(pl, pt, iw, ih, min, max, fmt){
+  let s='';
+  for (const v of _ticks(min, max, 4)){
+    const y = pt + ih - ((v-min)/(max-min))*ih;
+    s += `<line x1="${pl}" y1="${y.toFixed(1)}" x2="${pl+iw}" y2="${y.toFixed(1)}" stroke="#263449" stroke-width="1"/>`;
+    s += `<text x="${pl-6}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="10" fill="#94a3b8">${esc(fmt(v))}</text>`;
+  }
+  return s;
+}
+function _xStr(pl, pt, iw, ih, n, bw, labels, useBar){
+  const step = Math.max(1, Math.ceil(n/6));
+  let s='';
+  for (let i=0;i<n;i+=step){
+    const x = useBar ? (pl + i*bw + bw/2) : (n<=1 ? pl+iw/2 : pl + (i/(n-1))*iw);
+    s += `<text x="${x.toFixed(1)}" y="${pt+ih+16}" text-anchor="middle" font-size="10" fill="#94a3b8">${esc(labels[i]||'')}</text>`;
+  }
+  return s;
+}
+function _legendStr(groups){
+  return '<div class="chart-legend">' + groups.map(g =>
+    `<span><span class="k" style="background:${g.color}"></span>${esc(g.name)}</span>`).join('') + '</div>';
+}
+function _box(el, title, note, svg, legend, empty){
+  el.innerHTML = `<div class="chart-h">${esc(title)}</div>` +
+    (empty ? `<div class="chart-empty">${esc(empty)}</div>` : svg) +
+    (legend || '') + (note ? `<div class="chart-note">${esc(note)}</div>` : '');
+}
+
+// 積み上げ棒グラフ (写真/動画 など複数系列)
+// Stacked bar chart (multiple series such as photos/videos)
+function drawBars(el, title, labels, groups, fmt, note){
+  const w = el.clientWidth || 680, h = 170;
+  const iw = Math.max(10, w-C_PL-C_PR), ih = Math.max(10, h-C_PT-C_PB);
+  const n = labels.length;
+  const totals = labels.map((_,i)=> groups.reduce((s,g)=> s + (Number(g.data[i])||0), 0));
+  const maxv = _niceMax(Math.max(1, Math.max.apply(null, totals)));
+  const bw = iw / Math.max(1, n);
+  let bars='';
+  for (let i=0;i<n;i++){
+    let y = C_PT + ih;
+    let tip = [];
+    for (const g of groups){
+      const v = Number(g.data[i])||0;
+      const hh = (v/maxv)*ih;
+      if (hh > 0){
+        const x = C_PL + i*bw + 1, bwid = Math.max(1, bw-2);
+        bars += `<rect x="${x.toFixed(1)}" y="${(y-hh).toFixed(1)}" width="${bwid.toFixed(1)}" height="${hh.toFixed(1)}" fill="${g.color}"><title>${esc((labels[i]||'') + '  ' + g.name + ': ' + fmt(v))}</title></rect>`;
+      }
+      y -= hh; tip.push(g.name+' '+fmt(v));
+    }
+  }
+  const svg = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">` +
+    _gridStr(C_PL,C_PT,iw,ih,0,maxv,fmt) + bars +
+    _xStr(C_PL,C_PT,iw,ih,n,bw,labels,true) + '</svg>';
+  const allZero = totals.every(v => !v);
+  _box(el, title, note, svg, _legendStr(groups), allZero ? t('web.stats.chart.empty') : '');
+}
+
+// 折れ線グラフ (複数系列 / null は欠損として線を切る)
+// Line chart (multiple series; null = gap)
+function drawLines(el, title, labels, series, opts){
+  opts = opts || {};
+  const w = el.clientWidth || 680, h = 170;
+  const iw = Math.max(10, w-C_PL-C_PR), ih = Math.max(10, h-C_PT-C_PB);
+  const n = labels.length;
+  let vals=[];
+  series.forEach(s => s.data.forEach(v => { if (v!=null && isFinite(v)) vals.push(Number(v)); }));
+  const hasData = vals.length > 0;
+  let min = (opts.min != null) ? opts.min : Math.min(0, Math.max.apply(null, vals.concat([0])));
+  let max = (opts.max != null) ? opts.max : _niceMax(Math.max(1, Math.max.apply(null, vals.concat([0]))));
+  if (max <= min) max = min + 1;
+  const fmt = opts.fmt || (v => String(v));
+  const X = i => (n<=1 ? C_PL+iw/2 : C_PL + (i/(n-1))*iw);
+  const Y = v => C_PT + ih - ((v-min)/(max-min))*ih;
+
+  let paths='', dots='';
+  for (const s of series){
+    let d='', pen=false;
+    for (let i=0;i<n;i++){
+      const v = s.data[i];
+      if (v==null || !isFinite(v)){ pen=false; continue; }
+      d += (pen ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(Number(v)).toFixed(1) + ' ';
+      pen=true;
+    }
+    if (d) paths += `<path d="${d.trim()}" fill="none" stroke="${s.color}" stroke-width="2"/>`;
+    if (n <= 60){
+      for (let i=0;i<n;i++){
+        const v = s.data[i];
+        if (v==null || !isFinite(v)) continue;
+        dots += `<circle cx="${X(i).toFixed(1)}" cy="${Y(Number(v)).toFixed(1)}" r="2.6" fill="${s.color}"><title>${esc((labels[i]||'') + '  ' + s.name + ': ' + fmt(v))}</title></circle>`;
+      }
+    }
+  }
+  const svg = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">` +
+    _gridStr(C_PL,C_PT,iw,ih,min,max,fmt) + paths + dots +
+    _xStr(C_PL,C_PT,iw,ih,n,0,labels,false) + '</svg>';
+  _box(el, title, opts.note, svg, (series.length>1 ? _legendStr(series) : ''), hasData ? '' : t('web.stats.chart.empty'));
+}
+
+// ------------------------------------------------------------
+// データ取得 と 描画
+// Data fetch and render
+// ------------------------------------------------------------
+const GB = 1024**3, MB = 1024**2;
+let curRange = '24h';
+let _lastData = null;
+
+function fmtGB(v){ return (Number(v)||0)/GB; }
+function fmtMBs(v){ return (Number(v)||0)/MB; }
+function _n1(v){ return (Math.round((Number(v)||0)*10)/10).toFixed(1); }
+function _n0(v){ return String(Math.round(Number(v)||0)); }
+
+function renderCharts(d){
+  if (!d || !d.ok){ return; }
+  const labels = d.labels || [];
+  drawBars($('chart-volume'), t('web.stats.chart.volume'), labels,
+    [{name:t('web.stats.series.volume'), color:'#38bdf8', data:(d.volume_bytes||[])}],
+    v => _n1(fmtGB(v)) + ' GB');
+  drawBars($('chart-counts'), t('web.stats.chart.counts'), labels,
+    [{name:t('web.stats.series.images'), color:'#22c55e', data:(d.images||[])},
+     {name:t('web.stats.series.videos'), color:'#a855f7', data:(d.videos||[])}],
+    v => _n0(v) + ' ' + t('web.stats.unit.items'));
+  drawLines($('chart-speed'), t('web.stats.chart.speed'), labels,
+    [{name:t('web.stats.series.speed'), color:'#f59e0b', data:(d.speed_bps||[])}],
+    {fmt: v => _n1(fmtMBs(v))});
+  const H = d.health || {level:[], temp:[]};
+  drawLines($('chart-battery'), t('web.stats.chart.battery'), labels,
+    [{name:t('web.stats.series.battery'), color:'#22c55e', data:(H.level||[])}],
+    {min:0, max:100, fmt: v => _n0(v) + '%'});
+  drawLines($('chart-temp'), t('web.stats.chart.temp'), labels,
+    [{name:t('web.stats.series.temp'), color:'#ef4444', data:(H.temp||[])}],
+    {fmt: v => _n1(v)});
+}
+
+async function loadCharts(){
+  ['24h','7d','30d'].forEach(r => { const b = $('rg-'+r); if (b) b.classList.toggle('active', r===curRange); });
+  try {
+    const d = await fetch('/api/stats/timeseries?range=' + encodeURIComponent(curRange)).then(x=>x.json());
+    _lastData = d;
+    renderCharts(d);
+    updateHistNote(d && d.baseline);
+  } catch(e){ console.warn(e); }
+}
+
+// v1.7.20: 過去履歴クリア (基準時刻) の表示と操作。
+// v1.7.20: Show / control the "clear past history" baseline.
+function updateHistNote(baseline){
+  const n = $('hist-note');
+  const rb = $('btn-clearhist-reset');
+  if (rb) rb.style.display = baseline ? '' : 'none';
+  if (!n) return;
+  n.textContent = baseline
+    ? tf('web.stats.clear_hist_on', {ts: baseline})
+    : t('web.stats.clear_hist_off');
+}
+
+async function clearHistory(){
+  try {
+    const d = await fetch('/api/stats/clear_history', {method:'POST'}).then(r=>r.json());
+    if (d && d.ok) loadCharts();
+  } catch(e){ console.warn(e); }
+}
+
+async function resetHistory(){
+  try {
+    const d = await fetch('/api/stats/clear_history', {method:'DELETE'}).then(r=>r.json());
+    if (d && d.ok) loadCharts();
+  } catch(e){ console.warn(e); }
+}
+
+async function loadSummary(){
+  const box = $('file-summary');
+  try {
+    const r = await fetch('/api/files/summary').then(x=>x.json());
+    if (!r || !r.ok) throw new Error((r && r.error) || 'summary failed');
+    const mk = (title, d) => `
+      <div class="dcard ${d.remaining===0 ? 'ok' : ''}">
+        <div class="dc-h"><span class="dot"></span>${title}</div>
+        <div class="dc-s">${d.failed ? tf('web.stats.card.count_fail', {done:d.done, remain:d.remaining, fail:d.failed}) : tf('web.stats.card.count', {done:d.done, remain:d.remaining})}</div>
+        <div class="dc-d">${tf('web.stats.card.total', {n: d.done + d.remaining})}</div>
+      </div>`;
+    box.innerHTML =
+      mk(t('web.stats.card.transfer'), r.transfer) +
+      mk(t('web.stats.card.gp'), r.gp) +
+      mk(t('web.stats.card.delete'), r.delete) +
+      `<div class="dcard">
+         <div class="dc-h"><span class="dot"></span>${t('web.stats.card.capacity')}</div>
+         <div class="dc-s">${fmt_bytes(r.done_bytes)} / ${fmt_bytes(r.total_bytes)}</div>
+         <div class="dc-d">${tf('web.stats.card.capacity_v', {rem: fmt_bytes(r.remaining_bytes)})}</div>
+       </div>`;
+  } catch(e){
+    box.innerHTML = `<div class="dcard err"><div class="dc-h"><span class="dot"></span>${t('web.stats.card.err')}</div><div class="dc-s">${esc(e.message)}</div></div>`;
+  }
+}
+
+function refreshAll(){ loadSummary(); loadCharts(); }
+
+(function init(){
+  $('btn-refresh').addEventListener('click', refreshAll);
+  $('btn-clearhist').addEventListener('click', clearHistory);
+  $('btn-clearhist-reset').addEventListener('click', resetHistory);
+  ['24h','7d','30d'].forEach(r => {
+    $('rg-'+r).addEventListener('click', () => { curRange = r; loadCharts(); });
+  });
+  let _rt = null;
+  window.addEventListener('resize', () => {
+    if (_rt) clearTimeout(_rt);
+    _rt = setTimeout(() => { if (_lastData) renderCharts(_lastData); }, 200);
+  });
+  refreshAll();
+})();
+</script>
+{% endblock %}

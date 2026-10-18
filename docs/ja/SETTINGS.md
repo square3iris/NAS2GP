@@ -2,7 +2,7 @@
 
 最終更新: 2026-10-18
 
-設定は Web UI の **設定** ページ (スキーマ駆動) から編集し、`config/config_ui.json` に保存されます。
+設定は Web UI の **設定** ページ (スキーマ駆動) から編集し、`source/config/config_ui.json` に保存されます。
 設定ページの表示項目はバックエンドの `_settings_ui_schema()` が定義しており、バッチ工程 (①〜⑦) の流れに
 沿った **9 グループ** の順に並びます。各グループには「どの工程の設定か」「変えるとどう動くか」の説明を
 画面上に表示するため、設定の意味と影響が分かりやすい構成になっています。
@@ -13,14 +13,25 @@
 
 ```
 NAS2GP/ (リポジトリルート)
-├── config/
-│   ├── config_ui.json   ← 設定の永続化データ (初回 / 保存時に自動生成)
-│   ├── backups/         ← DB 自動バックアップ (.bak.YYYYMMDD-HHMMSS, 5 世代)
-│   ├── cache/           ← 一時ファイル
-│   └── lang/            ← i18n 外部言語 JSON (部分 / 全部カスタム可)
-├── database/
-│   └── nas2gp.db    ← SQLite3 DB (実運用の格納先)
-└── logs/                ← 実行ログ
+├── README.md
+├── LICENSE
+├── .gitignore
+├── docs/                  ← ドキュメント (ja / en)
+├── archive/
+│   └── v1.8.0/            ← リリース版スナップショット
+└── source/                ← 実行エントリ・パッケージ・実行時データを集約
+    ├── app.py / entry_web.py / db_admin.py   ← 実行エントリ
+    ├── nas2gp/            ← メインパッケージ
+    ├── bin/               ← 起動用 .cmd ランチャー
+    ├── scripts/           ← 補助スクリプト
+    ├── config/
+    │   ├── config_ui.json   ← 設定の永続化データ (初回 / 保存時に自動生成)
+    │   ├── backups/         ← DB 自動バックアップ (.bak.YYYYMMDD-HHMMSS, 5 世代)
+    │   ├── cache/           ← 一時ファイル
+    │   └── lang/            ← i18n 外部言語 JSON (部分 / 全部カスタム可)
+    ├── database/
+    │   └── nas2gp.db    ← SQLite3 DB (実運用の格納先)
+    └── logs/                ← 実行ログ
 ```
 
 ---
@@ -32,13 +43,14 @@ NAS2GP/ (リポジトリルート)
 
 ```json
 {
-  "CONFIG_SCHEMA_VERSION": 9,
+  "CONFIG_SCHEMA_VERSION": 10,
   "LANGUAGE": "auto",
   "PHOTO_DIR": "D:/Photos",
+  "DEVICE_WORK_DIR": "/sdcard/DCIM/NAS2GP",
   "BATCH_STRATEGY": "hybrid",
   "MAX_FILES_PER_BATCH": 30,
   "MAX_BYTES_PER_BATCH": 2147483648,
-  "PIXEL_STORAGE_MARGIN_GB": 4.0,
+  "DEVICE_STORAGE_MARGIN_GB": 4.0,
   "ADB_TIMEOUT": 60,
   "ADB_PUSH_RETRY": 3,
   "ADB_RECOVER_MIN_INTERVAL_SEC": 45.0,
@@ -66,7 +78,7 @@ NAS2GP/ (リポジトリルート)
 ```
 
 > **注意 (DB パス)**: DB パスは設定キーでは変更できません。`settings.DB_FILE`
-> (`database/nas2gp.db`) を唯一の正とし、書込み (`Database`)・診断・リセットは
+> (`source/database/nas2gp.db`) を唯一の正とし、書込み (`Database`)・診断・リセットは
 > すべて `settings.resolve_db_file()` 経由で同じ実ファイルを参照します。
 
 ---
@@ -80,8 +92,9 @@ NAS2GP/ (リポジトリルート)
 
 | キー | 型 | 既定 | 内容 |
 |---|---|---|---|
-| `LANGUAGE` | select | `auto` | UI / ログの表示言語。`ja` / `en` / `auto` (OS 追従) / `config/lang/*` の外部言語 |
+| `LANGUAGE` | select | `auto` | UI / ログの表示言語。`ja` / `en` / `auto` (OS 追従) / `source/config/lang/*` の外部言語 |
 | `PHOTO_DIR` | text | `D:/Photos` | 転送元ルート (NAS / SMB / ローカル可)。自分の環境の写真フォルダに変更してください |
+| `DEVICE_WORK_DIR` | text | `/sdcard/DCIM/NAS2GP` | 端末側の作業フォルダ (転送先 兼 削除対象)。**DCIM 配下のみ**許可。DCIM 配下は Google Photos の自動バックアップ対象。端末ページからも変更可 |
 
 ### 3.2 ① 容量確保 と バッチ分割 (CAPACITY)
 
@@ -93,7 +106,7 @@ NAS2GP/ (リポジトリルート)
 | `BATCH_STRATEGY` | select | `hybrid` | バッチを区切る基準: `count` (ファイル数) / `bytes` (容量) / `hybrid` (両方) |
 | `MAX_FILES_PER_BATCH` | int | `30` | 1 バッチの最大ファイル数 |
 | `MAX_BYTES_PER_BATCH` | gb | `2` GB | 1 バッチの最大容量 (画面は GB 単位で編集) |
-| `PIXEL_STORAGE_MARGIN_GB` | gb | `4.0` GB | 端末 に残す最小空き容量マージン |
+| `DEVICE_STORAGE_MARGIN_GB` | gb | `4.0` GB | 端末 に残す最小空き容量マージン |
 
 **バッチを区切る基準の意味**
 - `count`: ファイル数 (`MAX_FILES_PER_BATCH`) のみで区切る
@@ -188,7 +201,7 @@ NAS2GP/ (リポジトリルート)
 
 既存の日本語 / 英語以外の言語 (例: ドイツ語 `de`) を追加し、文言をカスタムする場合の手順です。
 
-### Step 1. `config/lang/de.json` を作成
+### Step 1. `source/config/lang/de.json` を作成
 
 ```json
 {
@@ -212,10 +225,10 @@ NAS2GP/ (リポジトリルート)
 ### Step 3. (任意) 整合性確認
 
 診断 ページの言語整合性カードで不足キー / 重複 / 外部 JSON 情報を確認できます。
-CLI でも確認できます。
+CLI でも確認できます (`source` フォルダをカレントディレクトリにして実行)。
 
 ```powershell
-python -c "from pixel_sync.core import i18n; print(i18n.diagnose_wordbank('de'))"
+python -c "from nas2gp.core import i18n; print(i18n.diagnose_wordbank('de'))"
 ```
 
 ---
@@ -247,19 +260,21 @@ Web UI の **管理** ページは、次の 2 つで構成されます。
 | ボタン | 操作 | 復元方法 |
 |---|---|---|
 | 進捗リセット | DB 本体 + WAL/SHM ジャーナル + 旧バックアップ DB を OLD 退避 | ファイル名から prefix を外す |
-| 設定リセット | `config/config_ui.json` を OLD 退避 | 同上 |
+| 設定リセット | `source/config/config_ui.json` を OLD 退避 | 同上 |
 | 工場出荷時リセット | DB フォルダ内 + 設定 + 過去ログ (`*.log`) を OLD 退避 | 同上 |
 
 > 工場出荷時リセットなど重要操作は、誤操作防止のため 2〜3 段階のインライン確認を挟みます。
 
 ### 5.3 DB メンテナンス CLI
 
+以下は `source` フォルダをカレントディレクトリにして実行します。
+
 ```powershell
 # 整合性検査
-python -m pixel_sync.storage.db_debug
+python -m nas2gp.storage.db_debug
 
 # VACUUM + 5 世代バックアップ
-python -m pixel_sync.storage.db_maintenance
+python -m nas2gp.storage.db_maintenance
 
 # ADB エラー行のみ PENDING に強制リセット
 python db_admin.py reset-failed
@@ -320,7 +335,7 @@ python db_admin.py --help
 ### 6.6 切断原因の解析 (切断解析ログ)
 
 長時間評価で切断が起きたときの原因を後から切り分けるには、`DISCONNECT_LOG_ENABLED` を
-有効 (既定) にしておきます。`logs/health.jsonl` に残量推移が残るため、切断が「緩やかな
+有効 (既定) にしておきます。`source/logs/health.jsonl` に残量推移が残るため、切断が「緩やかな
 電池切れ (残量が段階的に低下)」なのか「突発的切断 (残量は十分) = ケーブル / ADB 異常」なのかを
 傾向で判別できます。`DISCONNECT_HEARTBEAT_INTERVAL_SEC` を短くすると推移が細かく残りますが、
 その分だけ記録 (adb 呼び出し) の頻度が上がります。
