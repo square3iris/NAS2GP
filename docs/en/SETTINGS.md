@@ -154,17 +154,17 @@ finish uploading to the Google Photos cloud.
 | `BACKUP_STALLED_LIMIT` | int | `15` | Stall-restart threshold (consecutive polls). If "backing up" persists for this many polls, Google Photos is restarted to recover (actual time depends on `BACKUP_CHECK_INTERVAL`; e.g. 15 polls x 8s ~ 120s). Relaxed automatically in proportion to the no-progress timeout for large files (`0` disables) |
 | `RESTART_PHOTOS_AFTER_PUSH` | bool | `false` | Restart Google Photos only when a backup fails |
 
-### 3.6 Device screen (brightness / night light)
+### 3.6 Device screen (dimming during backup)
 
-Settings that dim the device screen during sync to reduce glare and screen burn-in.
-It enters night-light mode during the whole sync run and restores the original brightness when the run ends.
+Settings that dim the device screen during a backup (sync) run to reduce glare and screen burn-in.
+It dims while the backup runs and restores the original brightness when it ends.
 Screen brightness is independent of screenshot capture (OCR) and input, so OCR-based
 backup detection and operations keep working even at brightness `0`.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `ENABLE_NIGHT_LIGHT_MODE` | bool | `true` | Use night-light mode |
-| `SCREEN_BRIGHTNESS_NIGHT` | int | `0` | Screen brightness during the sync run (0-255). Restored to the original level automatically when the run ends |
+| `ENABLE_NIGHT_LIGHT_MODE` | bool | `true` | Dim the screen during backup |
+| `SCREEN_BRIGHTNESS_NIGHT` | int | `0` | Brightness during backup (0-255). Restored to the original level automatically when the run ends |
 
 ### 3.7 Analysis log (disconnect analysis + stats data)
 

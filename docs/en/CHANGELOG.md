@@ -110,6 +110,13 @@ removed desktop-GUI era is compressed).
 - **Docs (v1.13.1)**: updated the config sample and sections 3.3 / 3.5 / 3.6 / 3.7, and 6.3 / 6.6 in `docs/{ja,en}/SETTINGS.md`.
 - **Version bump (v1.13.1)**: `settings.APP_VERSION` changed from `1.13.0` to `1.13.1`.
 
+### v1.13.2 — Settings wording cleanup (unified around "during backup")
+
+- **Wording cleanup (v1.13.2)**: renamed the "Device screen (brightness / night light)" group to "Device screen (dimming during backup)" and unified the item labels/descriptions to "Dim the screen during backup" / "Brightness during backup". Behavior is unchanged (dimmed during the sync run, restored to the original brightness when it ends). The internal name "night light mode" was removed from the UI.
+- **Log wording (v1.13.2)**: `log.flow.night_brightness_on` changed to "Dimmed the device screen to {v} during backup".
+- **Docs (v1.13.2)**: updated section 3.6 in `docs/{ja,en}/SETTINGS.md`.
+- **Version bump (v1.13.2)**: `settings.APP_VERSION` changed from `1.13.1` to `1.13.2`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.
