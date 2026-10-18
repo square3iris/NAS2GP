@@ -316,6 +316,31 @@ class FileView:
         "7d": {"bucket": "hour", "span": 168},
         "30d": {"bucket": "day", "span": 30},
     }
+    # v1.12.0: 日付範囲 指定 時 の 最大 分割数 (安全 キャップ)。
+    # v1.12.0: upper cap on buckets for an explicit date range.
+    _CUSTOM_MAX_SPAN = 366
+
+    @staticmethod
+    def _parse_date_range(start, end):
+        """'YYYY-MM-DD' 形式 の start/end を datetime (その 日 の 00:00) に 変換 する 。
+        両方 が 有効 な とき だけ 戻り 値 を 返し 、 逆 順 は 自動 で 入れ替える 。
+        解釈 でき ない 場合 は (None, None)。
+
+        Parse 'YYYY-MM-DD' start/end into datetimes (00:00 of that day). Returns the
+        pair only when both are valid, swapping when reversed; (None, None) otherwise."""
+        try:
+            from datetime import date as _date
+            s = str(start or "").strip()[:10]
+            e = str(end or "").strip()[:10]
+            if not s or not e:
+                return None, None
+            ds = _date.fromisoformat(s)
+            de = _date.fromisoformat(e)
+            if de < ds:
+                ds, de = de, ds
+            return datetime(ds.year, ds.month, ds.day), datetime(de.year, de.month, de.day)
+        except Exception:
+            return None, None
 
     def get_stats_baseline(self) -> Optional[str]:
         """統計 の 『過去履歴クリア』 基準時刻 を 返す (ローカル 'YYYY-MM-DD HH:MM:SS')。
@@ -335,29 +360,49 @@ class FileView:
         except Exception:
             return None
 
-    def timeseries(self, range_key: str = "24h", baseline: Optional[str] = None) -> Dict[str, Any]:
+    def timeseries(self, range_key: str = "24h", baseline: Optional[str] = None,
+                   start=None, end=None) -> Dict[str, Any]:
         """統計 グラフ 用 の 時系列 集計 を 返す 。
         - 転送量 (bytes) と 実効速度 (bytes/s): batch_history (過去分 も 表示 可)
         - 写真 / 動画 の 枚数: files.transferred_at (v1.7.19 以降 の 記録)
         欠損 バケット は 0 埋め し 、 x 軸 が 連続 に なる よう 揃え る 。
+        v1.12.0: start/end ('YYYY-MM-DD') を 渡す と その 日付 範囲 を 表示 する (範囲 指定 優先)。
+        1日 以内 は 1時間 区切り 、 それ 以上 は 1日 区切り に 自動 で なる 。
 
         Return time-series aggregates for the stats graphs:
         - volume (bytes) / effective speed (bytes/s): from batch_history (covers past data)
         - image / video counts: from files.transferred_at (recorded since v1.7.19)
-        Missing buckets are zero-filled so the x-axis stays contiguous."""
-        spec = self._RANGE_SPEC.get(str(range_key or "24h").lower(), self._RANGE_SPEC["24h"])
-        bucket = str(spec["bucket"])
-        span = int(spec["span"])
+        Missing buckets are zero-filled so the x-axis stays contiguous.
+        v1.12.0: passing start/end ('YYYY-MM-DD') charts that explicit date range
+        (it takes precedence). Ranges up to 1 day bucket hourly, longer ranges daily."""
+        # v1.12.0: 日付範囲 (start/end) 指定 が あれ ば そちら を 優先 。
+        # v1.12.0: an explicit date range (start/end) takes precedence.
+        _d_start, _d_end = self._parse_date_range(start, end)
+        if _d_start and _d_end:
+            days = (_d_end - _d_start).days + 1
+            if days <= 1:
+                bucket = "hour"
+                span = 24
+                starts = [_d_start + timedelta(hours=i) for i in range(span)]
+            else:
+                bucket = "day"
+                span = min(days, self._CUSTOM_MAX_SPAN)
+                starts = [_d_start + timedelta(days=i) for i in range(span)]
+            range_key = "custom"
+        else:
+            spec = self._RANGE_SPEC.get(str(range_key or "24h").lower(), self._RANGE_SPEC["24h"])
+            bucket = str(spec["bucket"])
+            span = int(spec["span"])
+            now = datetime.now()
+            if bucket == "hour":
+                _bend = now.replace(minute=0, second=0, microsecond=0)
+                starts = [_bend - timedelta(hours=i) for i in range(span - 1, -1, -1)]
+            else:
+                _bend = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                starts = [_bend - timedelta(days=i) for i in range(span - 1, -1, -1)]
+
         fmt = "%Y-%m-%d %H:00" if bucket == "hour" else "%Y-%m-%d"
         short = "%H:00" if bucket == "hour" else "%m/%d"
-
-        now = datetime.now()
-        if bucket == "hour":
-            end = now.replace(minute=0, second=0, microsecond=0)
-            starts = [end - timedelta(hours=i) for i in range(span - 1, -1, -1)]
-        else:
-            end = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            starts = [end - timedelta(days=i) for i in range(span - 1, -1, -1)]
 
         keys = [s.strftime(fmt) for s in starts]
         short_labels = [s.strftime(short) for s in starts]

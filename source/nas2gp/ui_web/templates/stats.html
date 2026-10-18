@@ -28,6 +28,11 @@
       <button class="ghost" id="rg-24h">{{ tr('web.stats.range.24h') }}</button>
       <button class="ghost" id="rg-7d">{{ tr('web.stats.range.7d') }}</button>
       <button class="ghost" id="rg-30d">{{ tr('web.stats.range.30d') }}</button>
+      <span class="small" style="margin-left:6px">{{ tr('web.stats.range.custom') }}</span>
+      <input type="date" id="rg-start" style="padding:4px 6px">
+      <span class="small">{{ tr('web.stats.range.to') }}</span>
+      <input type="date" id="rg-end" style="padding:4px 6px">
+      <button class="ghost" id="rg-apply">{{ tr('web.stats.range.apply') }}</button>
       <span style="flex:1"></span>
       <button class="ghost" id="btn-clearhist" title="{{ tr('web.stats.clear_hist_title') }}">{{ tr('web.stats.clear_hist') }}</button>
       <button class="ghost" id="btn-clearhist-reset" style="display:none">{{ tr('web.stats.clear_hist_reset') }}</button>
@@ -35,12 +40,14 @@
     </div>
 
     <div id="hist-note" class="small" style="margin-top:10px"></div>
+    <div id="stats-avg" class="small" style="margin-top:6px"></div>
 
     <div id="chart-volume" class="chart-box"></div>
     <div id="chart-counts" class="chart-box"></div>
     <div id="chart-speed"  class="chart-box"></div>
     <div id="chart-battery" class="chart-box"></div>
     <div id="chart-temp"   class="chart-box"></div>
+    <div id="chart-free"   class="chart-box"></div>
 
     <div class="small" style="margin-top:12px">
       {{ tr('web.stats.hint.counts') }}<br>{{ tr('web.stats.hint.health') }}
@@ -95,7 +102,7 @@ function _box(el, title, note, svg, legend, empty){
 
 // 積み上げ棒グラフ (写真/動画 など複数系列)
 // Stacked bar chart (multiple series such as photos/videos)
-function drawBars(el, title, labels, groups, fmt, note){
+function drawBars(el, title, labels, groups, fmt, note, avg){
   const w = el.clientWidth || 680, h = 170;
   const iw = Math.max(10, w-C_PL-C_PR), ih = Math.max(10, h-C_PT-C_PB);
   const n = labels.length;
@@ -116,8 +123,16 @@ function drawBars(el, title, labels, groups, fmt, note){
       y -= hh; tip.push(g.name+' '+fmt(v));
     }
   }
+  // v1.12.0: 期間平均の水平線 (点線)。
+  // v1.12.0: dashed horizontal line for the period average.
+  let avgLine = '';
+  if (avg != null && isFinite(avg)){
+    const ay = C_PT + ih - (avg/maxv)*ih;
+    avgLine = `<line x1="${C_PL}" y1="${ay.toFixed(1)}" x2="${C_PL+iw}" y2="${ay.toFixed(1)}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="5 4"/>` +
+      `<text x="${(C_PL+iw-4)}" y="${(ay-3).toFixed(1)}" text-anchor="end" font-size="9.5" fill="#94a3b8">${esc(t('web.stats.avg.label'))}</text>`;
+  }
   const svg = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">` +
-    _gridStr(C_PL,C_PT,iw,ih,0,maxv,fmt) + bars +
+    _gridStr(C_PL,C_PT,iw,ih,0,maxv,fmt) + avgLine + bars +
     _xStr(C_PL,C_PT,iw,ih,n,bw,labels,true) + '</svg>';
   const allZero = totals.every(v => !v);
   _box(el, title, note, svg, _legendStr(groups), allZero ? t('web.stats.chart.empty') : '');
@@ -140,6 +155,16 @@ function drawLines(el, title, labels, series, opts){
   const X = i => (n<=1 ? C_PL+iw/2 : C_PL + (i/(n-1))*iw);
   const Y = v => C_PT + ih - ((v-min)/(max-min))*ih;
 
+  // v1.12.0: 各系列の期間平均を点線で重ねる。
+  // v1.12.0: overlay each series' period average as a dashed line.
+  let avgLines='';
+  for (const s of series){
+    if (s.avg == null || !isFinite(s.avg)) continue;
+    const ay = Y(Number(s.avg));
+    avgLines += `<line x1="${C_PL}" y1="${ay.toFixed(1)}" x2="${C_PL+iw}" y2="${ay.toFixed(1)}" stroke="${s.color}" stroke-width="1" stroke-dasharray="5 4" opacity="0.75"/>`;
+    avgLines += `<text x="${(C_PL+iw-4)}" y="${(ay-3).toFixed(1)}" text-anchor="end" font-size="9.5" fill="${s.color}">${esc(t('web.stats.avg.label'))}</text>`;
+  }
+
   let paths='', dots='';
   for (const s of series){
     let d='', pen=false;
@@ -159,7 +184,7 @@ function drawLines(el, title, labels, series, opts){
     }
   }
   const svg = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">` +
-    _gridStr(C_PL,C_PT,iw,ih,min,max,fmt) + paths + dots +
+    _gridStr(C_PL,C_PT,iw,ih,min,max,fmt) + avgLines + paths + dots +
     _xStr(C_PL,C_PT,iw,ih,n,0,labels,false) + '</svg>';
   _box(el, title, opts.note, svg, (series.length>1 ? _legendStr(series) : ''), hasData ? '' : t('web.stats.chart.empty'));
 }
@@ -170,6 +195,8 @@ function drawLines(el, title, labels, series, opts){
 // ------------------------------------------------------------
 const GB = 1024**3, MB = 1024**2;
 let curRange = '24h';
+let curStart = '';
+let curEnd = '';
 let _lastData = null;
 
 function fmtGB(v){ return (Number(v)||0)/GB; }
@@ -177,32 +204,76 @@ function fmtMBs(v){ return (Number(v)||0)/MB; }
 function _n1(v){ return (Math.round((Number(v)||0)*10)/10).toFixed(1); }
 function _n0(v){ return String(Math.round(Number(v)||0)); }
 
+// v1.12.0: 有効値のみの平均 (null/欠損は除外)。値がなければ null。
+// v1.12.0: mean over finite values only (nulls excluded); null when empty.
+function _avg(arr){
+  if (!Array.isArray(arr)) return null;
+  let s=0, n=0;
+  for (const v of arr){ if (v!=null && isFinite(v)){ s += Number(v); n++; } }
+  return n ? s/n : null;
+}
+
 function renderCharts(d){
   if (!d || !d.ok){ return; }
   const labels = d.labels || [];
   drawBars($('chart-volume'), t('web.stats.chart.volume'), labels,
     [{name:t('web.stats.series.volume'), color:'#38bdf8', data:(d.volume_bytes||[])}],
-    v => _n1(fmtGB(v)) + ' GB');
+    v => _n1(fmtGB(v)) + ' GB', null, _avg(d.volume_bytes));
   drawBars($('chart-counts'), t('web.stats.chart.counts'), labels,
     [{name:t('web.stats.series.images'), color:'#22c55e', data:(d.images||[])},
      {name:t('web.stats.series.videos'), color:'#a855f7', data:(d.videos||[])}],
     v => _n0(v) + ' ' + t('web.stats.unit.items'));
   drawLines($('chart-speed'), t('web.stats.chart.speed'), labels,
-    [{name:t('web.stats.series.speed'), color:'#f59e0b', data:(d.speed_bps||[])}],
+    [{name:t('web.stats.series.speed'), color:'#f59e0b', data:(d.speed_bps||[]), avg:_avg(d.speed_bps)}],
     {fmt: v => _n1(fmtMBs(v))});
-  const H = d.health || {level:[], temp:[]};
+  const H = d.health || {level:[], temp:[], free:[]};
   drawLines($('chart-battery'), t('web.stats.chart.battery'), labels,
-    [{name:t('web.stats.series.battery'), color:'#22c55e', data:(H.level||[])}],
+    [{name:t('web.stats.series.battery'), color:'#22c55e', data:(H.level||[]), avg:_avg(H.level)}],
     {min:0, max:100, fmt: v => _n0(v) + '%'});
   drawLines($('chart-temp'), t('web.stats.chart.temp'), labels,
-    [{name:t('web.stats.series.temp'), color:'#ef4444', data:(H.temp||[])}],
+    [{name:t('web.stats.series.temp'), color:'#ef4444', data:(H.temp||[]), avg:_avg(H.temp)}],
     {fmt: v => _n1(v)});
+  drawLines($('chart-free'), t('web.stats.chart.free'), labels,
+    [{name:t('web.stats.series.free'), color:'#38bdf8', data:(H.free||[]), avg:_avg(H.free)}],
+    {fmt: v => _n1(v) + ' GB'});
+  renderAvg(d);
+}
+
+// v1.12.0: 期間平均のサマリ (数値)。
+// v1.12.0: the period-average summary line.
+function renderAvg(d){
+  const el = $('stats-avg');
+  if (!el) return;
+  const H = d.health || {};
+  const f = (v, unit, dg) => (v == null ? t('web.stats.avg.none')
+    : (Math.round(v * Math.pow(10, dg)) / Math.pow(10, dg)).toFixed(dg) + unit);
+  const vol = _avg((d.volume_bytes||[]).map(fmtGB));
+  const speed = _avg((d.speed_bps||[]).map(fmtMBs));
+  const counts = _avg((d.labels||[]).map((_, i) =>
+    (Number((d.images||[])[i])||0) + (Number((d.videos||[])[i])||0)));
+  el.textContent = tf('web.stats.avg.summary', {
+    vol:   f(vol, ' GB', 1),
+    speed: f(speed, '', 1),
+    free:  f(_avg(H.free||[]), '', 1),
+    battery: f(_avg(H.level||[]), '', 0),
+    temp:  f(_avg(H.temp||[]), '', 1),
+    counts: f(counts, '', 0),
+  });
+}
+
+// v1.12.0: 期間プリセット / 日付範囲 から クエリ 文字列 を 組む。
+// v1.12.0: build the query string from the preset / explicit date range.
+function _chartQuery(){
+  if (curRange === 'custom' && curStart && curEnd){
+    return '?start=' + encodeURIComponent(curStart) + '&end=' + encodeURIComponent(curEnd);
+  }
+  return '?range=' + encodeURIComponent(curRange);
 }
 
 async function loadCharts(){
   ['24h','7d','30d'].forEach(r => { const b = $('rg-'+r); if (b) b.classList.toggle('active', r===curRange); });
   try {
-    const d = await fetch('/api/stats/timeseries?range=' + encodeURIComponent(curRange)).then(x=>x.json());
+    const d = await fetch('/api/stats/timeseries' + _chartQuery()).then(x=>x.json());
     _lastData = d;
     renderCharts(d);
     updateHistNote(d && d.baseline);
@@ -268,6 +339,19 @@ function refreshAll(){ loadSummary(); loadCharts(); }
   $('btn-clearhist-reset').addEventListener('click', resetHistory);
   ['24h','7d','30d'].forEach(r => {
     $('rg-'+r).addEventListener('click', () => { curRange = r; loadCharts(); });
+  });
+  // v1.12.0: 日付範囲 の 初期 値 (直近 7日) と 「表示」 操作。
+  // v1.12.0: default the date inputs (last 7 days) and wire the "show" action.
+  const _local = (d) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  const _si = $('rg-start'), _ei = $('rg-end');
+  if (_ei && !_ei.value){ _ei.value = _local(new Date()); }
+  if (_si && !_si.value){ _si.value = _local(new Date(Date.now() - 6*86400000)); }
+  const _apply = $('rg-apply');
+  if (_apply) _apply.addEventListener('click', () => {
+    const s = _si && _si.value, e = _ei && _ei.value;
+    if (!s || !e) return;
+    curStart = s; curEnd = e; curRange = 'custom';
+    loadCharts();
   });
   let _rt = null;
   window.addEventListener('resize', () => {

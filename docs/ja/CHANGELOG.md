@@ -80,6 +80,16 @@
 - **関連 i18n キー (v1.11.3)**: `web.device.del.not_found` / `web.device.confirm_uploaded_detail` / `web.device.uploaded_none` を `lang/ja.py` と `lang/en.py` に 追加 (`web.device.uploaded_note` も 対象 拡張 に 合わせ 更新)。
 - **バージョン更新 (v1.11.3)**: `settings.APP_VERSION` を `1.11.2` → `1.11.3` に 変更。
 
+### v1.12.0 — 統計 に 端末 空き容量 グラフ と 期間 (日付範囲) 指定 を 追加
+
+- **端末 空き容量 グラフ (v1.12.0)**: 統計 ページ に 「💾 端末 の 空き容量」 の 折れ線 グラフ を 独立 追加。データ は `logs/health.jsonl` (切断 解析 ログ、約 10 分 間隔) の `free_gb` を バケット 単位 で 集約 (バケット 内 の 最小 = 最も 逼迫 した 瞬間)。
+- **期間 の 日付 範囲 指定 (v1.12.0)**: 統計 ページ に 開始日 / 終了日 の 入力 と 「表示」 ボタン を 追加。「昨日 だけ」「先週 だけ」 の よう な 過去 の 任意 期間 を 表示 できる。既存 の 24時間 / 7日 / 30日 プリセット も 維持。API `/api/stats/timeseries` に `start` / `end` ('YYYY-MM-DD') を 追加。
+- **バケット の 自動 判定 (v1.12.0)**: 指定 範囲 が 1日 以内 なら 1時間 区切り 、 それ 以上 は 1日 区切り に 自動 で 切替 (最大 366 分割 で キャップ)。
+- **平均 線 と 平均 サマリ (v1.12.0)**: 各 グラフ に 期間 平均 の 点線 を 重ね 、 上部 に 期間 平均 (転送量 / 速度 / 空き容量 / 電池 / 温度 / 件数) の サマリ を 表示。解析 用途 を 想定。
+- **関連 i18n キー (v1.12.0)**: `web.stats.range.custom` / `range.to` / `range.apply` / `chart.free` / `series.free` / `avg.label` / `avg.none` / `avg.summary` を `lang/ja.py` と `lang/en.py` に 追加 (`web.stats.desc` / `hint.health` も 更新)。
+- **既知 の 制約 (v1.12.0)**: 電池 / 温度 / 空き容量 は 同期 運転 中 の 記録 のみ の ため 、 停止 期間 は グラフ が 途切れる (転送量 / 速度 は `batch_history` に 残る ため 過去 分 も 表示 可)。
+- **バージョン更新 (v1.12.0)**: `settings.APP_VERSION` を `1.11.3` → `1.12.0` に 変更。
+
 ### v1.9.0 — macOS / Linux 対応 (ベストエフォート)
 
 - **macOS / Linux 対応 (v1.9.0)**: これ まで Windows 専用 だっ た 構成 を macOS / Linux で も 起動 ・ 実行 でき る よう に し た (ベストエフォート)。実機 の macOS で の 動作 確認 は 未 実施。

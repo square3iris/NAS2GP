@@ -13,7 +13,7 @@ import os as _os
 # 更新 する とき は この 1 箇所 だけ を 変更 し て ください 。
 # Product version: the single source of truth referenced by the Web UI, OpenAPI (/docs)
 # and diagnostics. When releasing, update only this one place.
-APP_VERSION = "1.11.3"
+APP_VERSION = "1.12.0"
 
 # --------------------------------------------
 # Work Root (v1.7.4 追加: 診断 / リセット など の 「DB ファイル 相対パス 解決」 を 共通化)

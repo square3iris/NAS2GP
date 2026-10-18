@@ -591,11 +591,13 @@ def _settings_ui_schema() -> List[Dict[str, Any]]:
 
 def _read_health_series(bucket: str, keys: List[str], since: Optional[str] = None) -> Dict[str, Any]:
     """logs/health.jsonl (v1.7.18 の 切断解析ログ) を バケット 単位 に 集約 する 。
-    残量 は 平均 、 温度 は 最高 を 採る 。データ が ない バケット は None 。
+    残量 は 平均 、 温度 は 最高 、 空き容量 は 最小 (最も 逼迫 した 瞬間) を 採る 。
+    データ が ない バケット は None 。
     v1.7.20: since ('YYYY-MM-DD HH:MM:SS') 指定 時 は それ 以降 の 記録 だけ を 対象 に する 。
 
     Aggregate logs/health.jsonl (the v1.7.18 disconnect-analysis log) per bucket.
-    Level uses the average, temperature uses the max; empty buckets are None.
+    Level uses the average, temperature the max, free space the minimum (the tightest
+    moment); empty buckets are None.
     v1.7.20: when `since` is given, only records at or after it are used."""
     import json as _json
     from pathlib import Path as _Path
@@ -609,6 +611,7 @@ def _read_health_series(bucket: str, keys: List[str], since: Optional[str] = Non
     lvl_sum: Dict[str, float] = {}
     lvl_n: Dict[str, int] = {}
     temp_max: Dict[str, float] = {}
+    free_min: Dict[str, float] = {}
     try:
         if p.exists():
             with open(p, "r", encoding="utf-8", errors="replace") as f:
@@ -635,16 +638,23 @@ def _read_health_series(bucket: str, keys: List[str], since: Optional[str] = Non
                         v = float(tp)
                         if k not in temp_max or v > temp_max[k]:
                             temp_max[k] = v
+                    fg = r.get("free_gb")
+                    if isinstance(fg, (int, float)):
+                        v = float(fg)
+                        if k not in free_min or v < free_min[k]:
+                            free_min[k] = v
     except Exception:
         pass
 
     level: List[Any] = []
     temp: List[Any] = []
+    free: List[Any] = []
     for k in keys:
         n = lvl_n.get(k, 0)
         level.append(round(lvl_sum[k] / n, 1) if n else None)
         temp.append(round(temp_max[k], 1) if k in temp_max else None)
-    return {"level": level, "temp": temp}
+        free.append(round(free_min[k], 2) if k in free_min else None)
+    return {"level": level, "temp": temp, "free": free}
 
 
 def create_app() -> FastAPI:
@@ -911,19 +921,21 @@ def create_app() -> FastAPI:
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
     @app.get("/api/stats/timeseries")
-    def api_stats_timeseries(range: str = "24h"):
+    def api_stats_timeseries(range: str = "24h", start: Optional[str] = None, end: Optional[str] = None):
         """v1.7.19: 統計 時系列 グラフ 用 の 集計 を 返す (DB + health.jsonl)。
-        DB 集計 は 読み取り専用 別接続 。端末 健康 (残量 / 温度) は logs/health.jsonl
+        DB 集計 は 読み取り専用 別接続 。端末 健康 (残量 / 温度 / 空き容量) は logs/health.jsonl
         を バケット 単位 に 集約 する 。同期 def に より スレッドプール で 実行 する 。
+        v1.12.0: start/end ('YYYY-MM-DD') で 過去 の 日付 範囲 を 指定 できる 。
 
         v1.7.19: Returns time-series aggregates for the stats graphs (DB + health.jsonl).
-        DB aggregation uses a read-only connection; device health (level/temp) is bucketed
-        from logs/health.jsonl. A sync def runs it in the thread pool."""
+        DB aggregation uses a read-only connection; device health (level/temp/free) is
+        bucketed from logs/health.jsonl. A sync def runs it in the thread pool.
+        v1.12.0: start/end ('YYYY-MM-DD') select an explicit past date range."""
         try:
             from nas2gp.storage.db_view import FileView
             with FileView() as fv:
                 baseline = fv.get_stats_baseline()
-                data = fv.timeseries(range, baseline=baseline)
+                data = fv.timeseries(range, baseline=baseline, start=start, end=end)
         except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
         data["baseline"] = baseline
@@ -934,7 +946,7 @@ def create_app() -> FastAPI:
                 since=str(data.get("since") or "") or None,
             )
         except Exception:
-            data["health"] = {"level": [], "temp": []}
+            data["health"] = {"level": [], "temp": [], "free": []}
         return data
 
     @app.post("/api/stats/clear_history")

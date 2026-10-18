@@ -81,6 +81,16 @@ removed desktop-GUI era is compressed).
 - **Related i18n keys (v1.11.3)**: added `web.device.del.not_found` / `web.device.confirm_uploaded_detail` / `web.device.uploaded_none` to `lang/ja.py` and `lang/en.py` (and updated `web.device.uploaded_note` to match the widened scope).
 - **Version bump (v1.11.3)**: `settings.APP_VERSION` changed from `1.11.2` to `1.11.3`.
 
+### v1.12.0 — Stats: device free-space chart and custom date-range period
+
+- **Device free-space chart (v1.12.0)**: added a separate "💾 Device free space" line chart to the stats page. Data comes from `logs/health.jsonl` (the disconnect-analysis log, ~10-minute samples), aggregating `free_gb` per bucket (the minimum within a bucket = the tightest moment).
+- **Custom date-range period (v1.12.0)**: added start/end date inputs and a "Show" button to the stats page, so you can view any past period (e.g. "just yesterday", "just last week"). The existing 24h / 7d / 30d presets remain. Added `start` / `end` ('YYYY-MM-DD') to the `/api/stats/timeseries` API.
+- **Automatic bucket selection (v1.12.0)**: a range of up to 1 day buckets hourly, longer ranges daily (capped at 366 buckets).
+- **Average line and average summary (v1.12.0)**: each chart now overlays a dashed period-average line, and a period-average summary (volume / speed / free space / battery / temperature / items) is shown above the charts, aimed at analysis.
+- **Related i18n keys (v1.12.0)**: added `web.stats.range.custom` / `range.to` / `range.apply` / `chart.free` / `series.free` / `avg.label` / `avg.none` / `avg.summary` to `lang/ja.py` and `lang/en.py` (and updated `web.stats.desc` / `hint.health`).
+- **Known limitation (v1.12.0)**: battery / temperature / free space are recorded only while syncing, so the charts have gaps for stopped periods (volume / speed remain in `batch_history` and cover past data).
+- **Version bump (v1.12.0)**: `settings.APP_VERSION` changed from `1.11.3` to `1.12.0`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.
