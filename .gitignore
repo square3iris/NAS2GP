@@ -15,9 +15,10 @@
 !**/logs/.gitkeep
 
 # ---------- Config ----------
-# 個別 環境 設定 / ウィンドウ位置 は commit し ない
+# 個別 環境 設定 / ウィンドウ位置 / 利用同意 は commit し ない
 **/config/config_ui.json
 **/config/window_state.json
+**/config/consent.json
 
 # ---------- Python ----------
 __pycache__/

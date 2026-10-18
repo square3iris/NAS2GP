@@ -866,4 +866,22 @@ WORDS = {
     "log.ui.swipe_down_dir": "Y({y_high} top->Y{y_low} bottom = scroll toward bottom of page)",
     "log.ui.home_force_label": "{label}_HOME#{idx}(force move to RecyclerView top)",
     "log.ui.home_final_label": "{label}_HOME#final(final check at RecyclerView top)",
+
+    # --- usage consent (v1.10.0) ---
+    "web.consent.title": "Before you start",
+    "web.consent.warn": "Misoperation can delete data from the photo folder on your device. Always take a backup before running.",
+    "web.consent.check1": "I understand that misoperation can delete data from the photo folder on my device",
+    "web.consent.check2": "I agree that I use this software at my own risk",
+    "web.consent.accept": "Agree and continue",
+    "web.consent.required": "Consent is required. Please tick the items on the confirmation screen.",
+    "web.consent.save_fail": "Failed to save the consent",
+    "web.consent.settings.title": "Usage consent",
+    "web.consent.settings.state": "Status",
+    "web.consent.settings.at": "Accepted at",
+    "web.consent.settings.note": "Resetting will show the consent prompt again the next time you open a page.",
+    "web.consent.settings.reset": "Reset consent",
+    "web.consent.state.on": "Accepted",
+    "web.consent.state.off": "Not accepted",
+    "web.consent.reset_done": "Consent record reset",
+    "web.consent.reset_fail": "Reset failed",
 }

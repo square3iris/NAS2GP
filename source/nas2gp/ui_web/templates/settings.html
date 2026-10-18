@@ -19,6 +19,21 @@
     </div>
     <div id="cfg-msg" class="small" style="margin-top:8px"></div>
   </section>
+
+  {# v1.10.0: 利用 同意 の 状態 確認 と リセット #}
+  {# v1.10.0: show / reset the usage consent record #}
+  <section class="card">
+    <h2>{{ tr('web.consent.settings.title') }}</h2>
+    <div class="kv">
+      <dt>{{ tr('web.consent.settings.state') }}</dt><dd id="consent-state">-</dd>
+      <dt>{{ tr('web.consent.settings.at') }}</dt><dd id="consent-at">-</dd>
+    </div>
+    <div class="inline-note warn" style="margin-top:12px">{{ tr('web.consent.settings.note') }}</div>
+    <div class="btns" style="margin-top:12px">
+      <button class="danger" onclick="resetConsent()">{{ tr('web.consent.settings.reset') }}</button>
+    </div>
+    <div id="consent-set-msg" class="small" style="margin-top:8px; min-height:16px"></div>
+  </section>
 {% endblock %}
 
 {% block scripts %}
@@ -145,6 +160,32 @@ async function saveEditor(){
     }
   } catch(e){ console.warn(e); document.getElementById('cfg-msg').textContent = t('web.settings.save_fail') + ': ' + e; }
 }
+// v1.10.0: 利用 同意 の 状態 表示 と リセット (リセット する と 次回 ページ 表示 で 再確認)。
+// v1.10.0: show the consent state and reset it (resetting re-asks on the next page load).
+function _consentMsg(s, color){
+  const el = $('consent-set-msg');
+  el.textContent = s || '';
+  el.style.color = color || 'var(--sub)';
+}
+async function loadConsent(){
+  try {
+    const d = await fetch('/api/consent').then(r=>r.json());
+    const ok = !!(d && d.accepted);
+    const st = $('consent-state');
+    st.textContent = ok ? t('web.consent.state.on') : t('web.consent.state.off');
+    st.style.color = ok ? 'var(--ok)' : 'var(--err)';
+    $('consent-at').textContent = (d && d.accepted_at) ? d.accepted_at : '-';
+  } catch(e){ _consentMsg(String(e), 'var(--err)'); }
+}
+async function resetConsent(){
+  try {
+    const d = await fetch('/api/consent', { method:'DELETE' }).then(r=>r.json());
+    if (d && d.ok){ _consentMsg(t('web.consent.reset_done'), 'var(--ok)'); }
+    else { _consentMsg(t('web.consent.reset_fail'), 'var(--err)'); }
+    await loadConsent();
+  } catch(e){ _consentMsg(t('web.consent.reset_fail') + ': ' + e, 'var(--err)'); }
+}
 loadEditor();
+loadConsent();
 </script>
 {% endblock %}

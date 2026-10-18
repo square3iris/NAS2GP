@@ -921,4 +921,22 @@ WORDS = {
     "log.ui.swipe_down_dir": "Y({y_high}上端->Y{y_low}下端 = ページ下方へスクロール)",
     "log.ui.home_force_label": "{label}_HOME#{idx}(RecyclerView先頭へ強制移動)",
     "log.ui.home_final_label": "{label}_HOME#final(RecyclerView先頭へ最終確認)",
+
+    # --- 利用 同意 (v1.10.0) ---
+    "web.consent.title": "ご利用前の確認",
+    "web.consent.warn": "操作を間違えると、端末側の写真フォルダからデータが削除されます。必ずバックアップを取得してから実行してください。",
+    "web.consent.check1": "操作を間違えると、端末側の写真フォルダからデータが削除されることを理解しました",
+    "web.consent.check2": "本ソフトの利用は自己責任であることに同意します",
+    "web.consent.accept": "同意して開始",
+    "web.consent.required": "利用への同意がまだです。画面の確認項目にチェックを入れてください。",
+    "web.consent.save_fail": "同意の保存に失敗しました",
+    "web.consent.settings.title": "利用への同意",
+    "web.consent.settings.state": "状態",
+    "web.consent.settings.at": "同意日時",
+    "web.consent.settings.note": "リセットすると、次にページを開いたときに同意の確認が再表示されます。",
+    "web.consent.settings.reset": "同意をリセット",
+    "web.consent.state.on": "同意済み",
+    "web.consent.state.off": "未同意",
+    "web.consent.reset_done": "同意記録をリセットしました",
+    "web.consent.reset_fail": "リセットに失敗しました",
 }

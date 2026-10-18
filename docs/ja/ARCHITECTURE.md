@@ -24,6 +24,7 @@ Google Photos アプリの標準バックアップ完了を確認したうえで
     |   settings.py / logger.py / util.py / config.py / config_loader.py
     |   events.py / control.py / maintenance.py / diagnostics.py
     |   disconnect_log.py (切断解析: ハートビート / スナップショット)
+    |   consent.py (利用同意: 免責事項ゲート / consent.json 管理)
     |   i18n.py (多言語 + 単語バンク外部化)  /  lang/{ja,en}.py
     |
     | Layer 2: scanner/ (ローカルファイル走査) + storage/media.py
@@ -74,7 +75,7 @@ Google Photos アプリの標準バックアップ完了を確認したうえで
 
 | パッケージ | 役割 | 主なファイル |
 |---|---|---|
-| `nas2gp.core/` | 共通基盤 | `settings.py`, `logger.py`, `i18n.py`, `util.py`, `config.py`, `config_loader.py`, `events.py`, `control.py`, `maintenance.py`, `diagnostics.py`, `disconnect_log.py`, `lang/{ja,en}.py` |
+| `nas2gp.core/` | 共通基盤 | `settings.py`, `logger.py`, `i18n.py`, `util.py`, `config.py`, `config_loader.py`, `events.py`, `control.py`, `maintenance.py`, `diagnostics.py`, `disconnect_log.py`, `consent.py`, `lang/{ja,en}.py` |
 | `nas2gp.device/` | 端末 操作・ADB 抽象 | `adb.py`, `ui.py`, `device.py` |
 | `nas2gp.scanner/` | ローカルファイル走査 | `local.py` |
 | `nas2gp.storage/` | DB 層 | `db.py`, `db_batch.py`, `db_stats.py`, `db_view.py`, `db_debug.py`, `db_maintenance.py`, `media.py` |
@@ -213,6 +214,9 @@ GET  /api/files/summary               統計サマリ
 GET  /api/stats/timeseries            統計 時系列 集計 (期間 24h/7d/30d, DB + health.jsonl)
 GET  /api/diagnostics                 診断情報
 GET  /api/diagnostics/bugreport       バグレポート ZIP 生成
+GET  /api/consent                     同意 状態 取得 (同意 済み / 同意 日時 / バージョン)
+POST /api/consent                     同意 を 記録 (1 回 のみ 確認 し consent.json に 記憶)
+DELETE /api/consent                   同意 記録 を 削除 (次回 表示 で 再確認)
 POST /api/maintenance/reset_progress  進捗リセット
 POST /api/maintenance/reset_settings  設定リセット
 POST /api/maintenance/factory_reset   工場出荷時リセット
@@ -228,6 +232,8 @@ GET  /progress/sse                    進捗 SSE
 ```
 
 > `POST /api/open_path` は `core/util.py` の `open_in_file_manager()` を呼び出します。Windows は `os.startfile`、macOS は `open`、Linux は `xdg-open` を使い分け、「フォルダを開く」が Windows / macOS / Linux で動作します (v1.9.0)。
+>
+> `POST /api/start` (同期開始) と `POST /api/device/delete_uploaded` (転送済みファイル削除) は、先頭で利用同意を確認し、未同意なら HTTP 409 と `{"ok": false, "error": "consent_required", "message": "..."}` を返します (v1.10.0)。同意状態は `nas2gp.core.consent` が `config/consent.json` で管理します。
 
 ---
 

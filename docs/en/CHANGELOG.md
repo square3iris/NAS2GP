@@ -32,6 +32,16 @@ removed desktop-GUI era is compressed).
 - **File list moved (v1.7.19)**: moved from the Stats page to the **Management page** (per-column filter / search / sort).
 - **Settings page reorganized (v1.7.19)**: restructured into 9 groups in pipeline order, with always-visible descriptions of "which stage" and "what changes" for each group/item. Confusing internal jargon (legacy behavior / accept rule B, etc.) was replaced with plain wording.
 
+### v1.10.0 — Usage consent gate
+
+- **Usage consent gate (v1.10.0)**: on first launch a full-screen overlay asks you to accept the disclaimer, and the "Accept and start" button stays disabled until you tick both checkboxes. The acceptance is recorded in `source/config/consent.json` and is not shown again afterwards (no re-confirmation on version upgrades).
+- **Consent module added (v1.10.0)**: added `nas2gp/core/consent.py` with `load_consent()` / `is_accepted()` / `accept(version)` / `reset()`. The record lives in `config/consent.json` (same `config/` base as config_loader), and `reset()` deletes only the single `consent.json` file.
+- **Consent APIs added (v1.10.0)**: `GET /api/consent` (state) / `POST /api/consent` (record acceptance, logs one line) / `DELETE /api/consent` (clear the record, logs one line).
+- **Server-side guard (v1.10.0)**: `POST /api/start` (start sync) and `POST /api/device/delete_uploaded` (delete transferred files) check consent first and return HTTP 409 with `{"ok": false, "error": "consent_required", "message": "..."}` when not accepted.
+- **Settings page "Usage consent" card (v1.10.0)**: shows the consent state (accepted / not accepted) and the accepted time, with a red "Reset consent" button that clears the record (the overlay reappears on the next page load). Notices are shown inline.
+- **i18n keys added (v1.10.0)**: `web.consent.*` keys added to `lang/ja.py` and `lang/en.py`.
+- **Version bump (v1.10.0)**: `settings.APP_VERSION` changed from `1.9.0` to `1.10.0`. Added `**/config/consent.json` to `.gitignore` (the consent record is per-environment state, so it is not committed).
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.

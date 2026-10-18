@@ -742,6 +742,20 @@ def create_app() -> FastAPI:
                           app_version=str(getattr(web_settings, "APP_VERSION", "") or ""))
         return HTMLResponse(content=html)
 
+    def _consent_block():
+        """v1.10.0: 未同意 なら 409 応答 用 の 本文 を 返す (同意 済み なら None)。
+        データ を 動かす / 消す API の 先頭 で 呼ぶ 。
+
+        v1.10.0: Returns the 409 body when consent is missing (None when accepted).
+        Called at the top of the APIs that move or delete data."""
+        try:
+            from nas2gp.core import consent as _consent
+            if _consent.is_accepted():
+                return None
+        except Exception:
+            return None
+        return {"ok": False, "error": "consent_required", "message": _tr("web.consent.required")}
+
     _PAGES = [
         # (path, template, active_key, i18n title key)
         ("/", "index.html", "home", "web.nav.home"),
@@ -1215,6 +1229,9 @@ def create_app() -> FastAPI:
         Deletes only the files NAS2GP transferred to the device (one-by-one rm -f).
         Personal photos are never touched.
         """
+        _blk = _consent_block()
+        if _blk:
+            return JSONResponse(status_code=409, content=_blk)
         result = {"ok": False, "total": 0, "ok_cnt": 0, "err_cnt": 0, "targets": [], "logs": [], "error": None}
         try:
             from nas2gp.device.device import Device as _Px2
@@ -1300,6 +1317,54 @@ def create_app() -> FastAPI:
         except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
+    @app.get("/api/consent")
+    async def api_consent_get():
+        """v1.10.0: 同意 状態 を 返す (同意 済み か / 同意 日時 / その 時 の バージョン)。
+
+        v1.10.0: Returns the consent state (accepted? / accepted at / version)."""
+        from nas2gp.core import consent as _consent
+        data = _consent.load_consent()
+        return {
+            "ok": True,
+            "accepted": bool(data.get("accepted")),
+            "accepted_at": str(data.get("accepted_at") or ""),
+            "version": str(data.get("version") or ""),
+        }
+
+    @app.post("/api/consent")
+    async def api_consent_accept():
+        """v1.10.0: 同意 を 記録 する (1 回 だけ 確認 し 、 以降 は consent.json で 記憶)。
+
+        v1.10.0: Records the acceptance (asked only once; remembered in consent.json)."""
+        from nas2gp.core import consent as _consent
+        ver = str(getattr(web_settings, "APP_VERSION", "") or "")
+        try:
+            data = _consent.accept(ver)
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        try:
+            from nas2gp.core.logger import Logger as _LgC
+            _LgC.info(f"[Web][同意] 免責事項に同意しました (v{ver})")
+        except Exception:
+            pass
+        return {"ok": True, "accepted": True,
+                "accepted_at": str(data.get("accepted_at") or ""), "version": ver}
+
+    @app.delete("/api/consent")
+    async def api_consent_reset():
+        """v1.10.0: 同意 記録 を 消す (次回 ページ 表示 で 確認 画面 が 再表示 さ れる)。
+
+        v1.10.0: Clears the consent record (the gate reappears on the next page load)."""
+        from nas2gp.core import consent as _consent
+        ok = _consent.reset()
+        if ok:
+            try:
+                from nas2gp.core.logger import Logger as _LgC
+                _LgC.info("[Web][同意] 同意記録をリセットしました")
+            except Exception:
+                pass
+        return {"ok": bool(ok)}
+
     @app.put("/api/settings")
     async def api_settings_save(payload: Optional[Dict[str, Any]] = None):
         payload = payload if isinstance(payload, dict) else {}
@@ -1335,6 +1400,9 @@ def create_app() -> FastAPI:
 
     @app.post("/api/start")
     async def api_start(payload: Optional[Dict[str, Any]] = None):
+        _blk = _consent_block()
+        if _blk:
+            return JSONResponse(status_code=409, content=_blk)
         try:
             from nas2gp.core.config_loader import load_and_apply_gui_config
             cfg = load_and_apply_gui_config(silent=True)

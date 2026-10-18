@@ -28,6 +28,7 @@ NAS2GP/ (repository root)
     ├── scripts/           <- helper scripts
     ├── config/
     │   ├── config_ui.json   <- persisted settings (created on first run / save)
+    │   ├── consent.json     <- usage consent record (accepted time / version; not committed)
     │   ├── backups/         <- automatic DB backups (.bak.YYYYMMDD-HHMMSS, 5 generations)
     │   ├── cache/           <- temporary files
     │   └── lang/            <- external i18n language JSON (partial / full custom)
@@ -198,6 +199,11 @@ Public settings for this Web screen itself. Changes require restarting the app (
 
 > Keys that require a restart (HOST / PORT, etc.) take effect from the next launch.
 > The save action reports this via an inline notice.
+
+**"Usage consent" card at the bottom of the Settings page**: it shows the consent state (accepted / not
+accepted) and the accepted time, and a red "Reset consent" button clears the consent record
+(`config/consent.json`). After a reset, the consent overlay (full-screen confirmation) reappears the
+next time you open a page.
 
 ---
 

@@ -25,6 +25,7 @@ the local copies from the device. All interaction is provided through a single
     |   settings.py / logger.py / util.py / config.py / config_loader.py
     |   events.py / control.py / maintenance.py / diagnostics.py
     |   disconnect_log.py (disconnect analysis: heartbeat / snapshot)
+    |   consent.py (usage consent: disclaimer gate / consent.json)
     |   i18n.py (i18n + externalized word bank)  /  lang/{ja,en}.py
     |
     | Layer 2: scanner/ (local file scan) + storage/media.py
@@ -75,7 +76,7 @@ the local copies from the device. All interaction is provided through a single
 
 | Package | Role | Main files |
 |---|---|---|
-| `nas2gp.core/` | Shared foundation | `settings.py`, `logger.py`, `i18n.py`, `util.py`, `config.py`, `config_loader.py`, `events.py`, `control.py`, `maintenance.py`, `diagnostics.py`, `disconnect_log.py`, `lang/{ja,en}.py` |
+| `nas2gp.core/` | Shared foundation | `settings.py`, `logger.py`, `i18n.py`, `util.py`, `config.py`, `config_loader.py`, `events.py`, `control.py`, `maintenance.py`, `diagnostics.py`, `disconnect_log.py`, `consent.py`, `lang/{ja,en}.py` |
 | `nas2gp.device/` | device operations / ADB abstraction | `adb.py`, `ui.py`, `device.py` |
 | `nas2gp.scanner/` | Local file scanning | `local.py` |
 | `nas2gp.storage/` | DB layer | `db.py`, `db_batch.py`, `db_stats.py`, `db_view.py`, `db_debug.py`, `db_maintenance.py`, `media.py` |
@@ -214,6 +215,9 @@ GET  /api/files/summary               stats summary
 GET  /api/stats/timeseries            stats time-series (range 24h/7d/30d, DB + health.jsonl)
 GET  /api/diagnostics                 diagnostics info
 GET  /api/diagnostics/bugreport       generate bug report ZIP
+GET  /api/consent                     consent state (accepted / accepted at / version)
+POST /api/consent                     record acceptance (asked once; stored in consent.json)
+DELETE /api/consent                   clear the record (re-confirm on next load)
 POST /api/maintenance/reset_progress  reset progress
 POST /api/maintenance/reset_settings  reset settings
 POST /api/maintenance/factory_reset   factory reset
@@ -229,6 +233,8 @@ GET  /progress/sse                    progress SSE
 ```
 
 > `POST /api/open_path` calls `open_in_file_manager()` in `core/util.py`. Windows uses `os.startfile`, macOS uses `open`, Linux uses `xdg-open`, so "open folder" works on Windows / macOS / Linux (v1.9.0).
+>
+> `POST /api/start` (start sync) and `POST /api/device/delete_uploaded` (delete transferred files) check consent first and return HTTP 409 with `{"ok": false, "error": "consent_required", "message": "..."}` when not accepted (v1.10.0). The consent state is managed by `nas2gp.core.consent` in `config/consent.json`.
 
 ---
 

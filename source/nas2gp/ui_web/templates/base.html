@@ -123,6 +123,20 @@
   .step.done { background: rgba(34,197,94,.07); border-color:#2f6b46; color:#4ade80; }
   .step.done .step-dot { background:#4ade80; }
   .step.done .step-label::before { content:"✓ "; font-weight:900; }
+  /* v1.10.0: 初回 のみ 表示 する 利用 同意 の 確認 画面 */
+  /* v1.10.0: one-time usage consent gate */
+  .consent-overlay { position:fixed; inset:0; z-index:50; background:rgba(2,6,23,.88);
+                     display:flex; align-items:center; justify-content:center; padding:18px; }
+  .consent-box { width:100%; max-width:560px; max-height:92vh; overflow:auto; background:var(--panel);
+                 border:2px solid var(--err); border-radius:14px; padding:20px;
+                 display:grid; gap:14px; box-shadow:0 12px 40px rgba(0,0,0,.6); }
+  .consent-box h2 { font-size:18px; color:var(--err); margin:0; }
+  .consent-warn { background:rgba(239,68,68,.12); color:#fca5a5; border-radius:10px; padding:12px 14px;
+                  font-size:15px; font-weight:700; line-height:1.7; }
+  .consent-item { display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border:1px solid #334155;
+                  border-radius:10px; font-size:15px; line-height:1.6; cursor:pointer; }
+  .consent-item input { flex:0 0 auto; width:22px; height:22px; margin-top:1px; cursor:pointer; }
+  #consent-ok:disabled { opacity:.45; cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -145,6 +159,19 @@
 
 <div class="wrap">
 {% block content %}{% endblock %}
+</div>
+
+{# v1.10.0: 未同意 の とき だけ 表示 する 利用 同意 の 確認 画面 #}
+{# v1.10.0: usage consent gate, shown only while not accepted #}
+<div id="consent-overlay" class="consent-overlay" style="display:none">
+  <div class="consent-box">
+    <h2>{{ tr('web.consent.title') }}</h2>
+    <div class="consent-warn">{{ tr('web.consent.warn') }}</div>
+    <label class="consent-item"><input type="checkbox" id="consent-c1" onchange="syncConsentBtn()"><span>{{ tr('web.consent.check1') }}</span></label>
+    <label class="consent-item"><input type="checkbox" id="consent-c2" onchange="syncConsentBtn()"><span>{{ tr('web.consent.check2') }}</span></label>
+    <div class="btns"><button id="consent-ok" class="danger" disabled onclick="acceptConsent()">{{ tr('web.consent.accept') }}</button></div>
+    <div id="consent-msg" class="small" style="min-height:16px"></div>
+  </div>
 </div>
 
 <script>window.I18N = {{ i18n_dict() | tojson }};</script>
@@ -178,6 +205,27 @@ function renderLogs(elId, logs){
   ).join('');
   box.scrollTop = box.scrollHeight;
 }
+// v1.10.0: 利用 同意 の 確認 画面 。 同意 済み なら 何 も 表示 し ない (1 回 だけ 確認)。
+// v1.10.0: usage consent gate; shown only while not accepted (asked once).
+function syncConsentBtn(){
+  const b = $('consent-ok'), c1 = $('consent-c1'), c2 = $('consent-c2');
+  if (b && c1 && c2) b.disabled = !(c1.checked && c2.checked);
+}
+async function acceptConsent(){
+  const c1 = $('consent-c1'), c2 = $('consent-c2');
+  if (!(c1 && c2 && c1.checked && c2.checked)) return;
+  try {
+    const j = await fetch('/api/consent', { method:'POST' }).then(r=>r.json());
+    if (j && j.ok){ $('consent-overlay').style.display = 'none'; return; }
+    $('consent-msg').textContent = t('web.consent.save_fail');
+  } catch(e){ $('consent-msg').textContent = t('web.consent.save_fail') + ': ' + e; }
+}
+(async function initConsent(){
+  try {
+    const d = await fetch('/api/consent').then(r=>r.json());
+    if (!(d && d.accepted)) $('consent-overlay').style.display = 'flex';
+  } catch(e){ /* 取得 でき ない とき は 確認 画面 を 出さ ない */ }
+})();
 </script>
 {% block scripts %}{% endblock %}
 </body>

@@ -106,7 +106,9 @@ pip install uvicorn fastapi jinja2
 python entry_web.py
 ```
 
-Open `http://127.0.0.1:8000/` in a browser and configure on the **Settings** page:
+On the first launch, opening `http://127.0.0.1:8000/` in a browser shows a full-screen **Usage consent** (disclaimer) overlay. Read the warning and tick the two checkboxes (understanding of data deletion / agreement at your own risk); the "Accept and start" button becomes clickable. The acceptance is recorded in `source/config/consent.json` and is not shown again.
+
+Then configure on the **Settings** page:
 
 1. **PHOTO_DIR**: the photo folder (e.g. `D:\Photos`, or `\\NAS\Photos` for a NAS)
 2. **Batch strategy / batch size / max batch size (GB)**: for photo-heavy libraries prefer a larger file count and smaller size; for video-heavy, prefer size-first
@@ -190,6 +192,7 @@ bin/start_web_app.sh             # via the .sh launcher
 
 - **Stop**: interrupts the running process immediately.
 - **Stop after this batch**: finishes the current batch, then stops safely.
+- **Redo the consent**: press "Reset consent" in the "Usage consent" card at the bottom of the Settings page, or delete `source/config/consent.json`. The consent confirmation reappears the next time you open a page.
 
 ---
 

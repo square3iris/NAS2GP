@@ -42,6 +42,7 @@ Google Photos の無制限アップロードの条件は Google のポリシー�
 | 切断解析ログ | 一定間隔で電池 / 温度 / 空き容量を記録し、切断時のスナップショットを保存 |
 | Web UI | 進捗 / 統計（時系列グラフ） / 管理（ファイル一覧） / 設定 / 診断 |
 | 多言語 | 日本語 / English ＋ JSON を1つ置くだけで任意の言語を追加 |
+| 利用同意（初回のみ） | 初回起動時に免責事項への同意を Web UI で確認（2 項目のチェック）。一度同意すると記憶され、次回以降は表示されない |
 
 ### 多言語対応（言語を追加できます）
 
@@ -134,9 +135,11 @@ NAS2GP/
 > [!CAUTION]
 > **操作を間違えると、端末側の写真フォルダからデータが削除されます。**
 > 必ずバックアップを取得してから実行してください。ご利用は**自己責任**でお願いします。
+> 初回起動時は Web UI で免責事項への同意（2 項目のチェック）が求められます。
 
 - 端末の個人データを扱います。**初回はテスト用の写真で動作を確認**してから本番運用してください。
 - `database/` と `logs/`、`config/config_ui.json` には個人情報（ファイルパス・履歴）が含まれるため、Git にはコミットされません。
+- 同意の状態（同意済み / 未同意）と同意日時は **設定** ページの「利用への同意」で確認でき、そこで同意をリセット（確認をもう一度表示）できます。
 - 本ソフトは現状のまま提供されます。重要なデータのバックアップは別途取得してください。
 
 ### 既知の制限・サポートについて
@@ -186,6 +189,7 @@ The conditions for Google Photos unlimited upload may change with Google's polic
 | Disconnect analysis log | Periodically records battery / temperature / free space and snapshots the state on a disconnect |
 | Web UI | Progress / statistics (time-series charts) / management (file list) / settings / diagnostics |
 | Languages | Japanese / English, plus any language you add with a single JSON file |
+| Usage consent (first run only) | On first launch, the Web UI asks you to accept the disclaimer (two checkboxes). Once accepted it is remembered and never shown again |
 
 ### Languages (you can add your own)
 
@@ -278,9 +282,11 @@ NAS2GP/
 > [!CAUTION]
 > **Misoperation can delete data from the photo folder on your device.**
 > Always take a backup before running. Use at your own risk.
+> On the first launch, the Web UI asks you to accept the disclaimer (two checkboxes).
 
 - This tool handles your personal media. **Test with sample photos first** before real use.
 - `database/`, `logs/` and `config/config_ui.json` can contain personal information (file paths, history) and are not committed to Git.
+- The consent state (accepted / not accepted) and the accepted time are shown in the **Settings** page under "Usage consent", where you can also reset it to show the confirmation again.
 - The software is provided as is. Please keep separate backups of important data.
 
 ### Known limitations and support
