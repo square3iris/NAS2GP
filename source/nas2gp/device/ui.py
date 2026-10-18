@@ -838,32 +838,40 @@ def _classify_detailed_status(texts):
         return any(k in normalized or k in up for k in keywords)
 
     if _hit("フォトライブラリをスキャン", "フォトライブラリ を スキャン",
-            "ライブラリをスキャン", "Scanning media items",
-            "Scanning your library", "スキャンしています",
-            "メディア アイテム を スキャン"):
+            "ライブラリをスキャン", "ライブラリ を スキャン",
+            "Scanning media items", "Scanning your library", "Scanning",
+            "スキャンしています", "スキャン しています", "スキャン中",
+            "メディア アイテム を スキャン", "メディアアイテムをスキャン"):
         return "scan_photo_library"
 
-    if _hit("準備しています", "準備 中", "Preparing backup",
-            "Preparing upload", "バックアップ の 準備", "アップロード の 準備"):
+    if _hit("準備しています", "準備 しています", "準備 中", "準備中",
+            "バックアップ の 準備", "バックアップの準備",
+            "アップロード の 準備", "アップロードの準備",
+            "Preparing backup", "Preparing upload", "Preparing"):
         return "preparing"
 
-    if _hit("チェック 中", "確認 中", "Checking", "整合性 を 確認",
-            "写真 を 確認", "Checking for new photos", "重複 を 確認"):
+    if _hit("チェック 中", "チェック中", "確認 中", "確認中", "Checking",
+            "整合性 を 確認", "整合性を確認",
+            "写真 を 確認", "写真を確認", "Checking for new photos",
+            "重複 を 確認", "重複を確認"):
         return "checking"
 
     if _hit("Processing", "Processing photos", "Processing videos",
-            "処理中", "写真 を 処理", "動画 を 処理"):
+            "処理中", "処理しています", "写真 を 処理", "写真を処理",
+            "動画 を 処理", "動画を処理"):
         return "processing"
 
-    if _hit("一時停止", "Paused", "Pause", "一時停止 中"):
+    if _hit("一時停止", "一時停止 中", "一時停止中", "Paused", "Pause"):
         return "paused"
 
-    if _hit("バックアップ 完了", "Backing up is complete", "Backup complete",
-            "バックアップは最新", "Backup is up to date"):
+    if _hit("バックアップ 完了", "バックアップ完了", "バックアップが完了",
+            "バックアップは完了", "バックアップ は 最新", "バックアップは最新",
+            "Backing up is complete", "Backup complete", "Backup is up to date"):
         return "complete_explicit"
 
-    if _hit("アップロード 中", "Uploading", "Now uploading",
-            "アップロードしています", "バックアップ 中", "Backing up"):
+    if _hit("アップロード 中", "アップロード中", "アップロードしています",
+            "バックアップ 中", "バックアップ中",
+            "Uploading", "Now uploading", "Backing up"):
         return "uploading_explicit"
 
     return None
@@ -1359,9 +1367,10 @@ def get_backup_status():
             f"force scroll_to_top + prepare_ui() to recover"
         )
         if _unknown_streak == 1:
-            print("  " + tr("ui.scroll.unknown_recovery1"))
+            print("  " + tr("ui.scroll.unknown_recovery1").format(screen=_screen_phrase_for_unknown()))
         else:
-            print("  " + tr("ui.scroll.unknown_recovery2").format(cnt=_unknown_streak))
+            print("  " + tr("ui.scroll.unknown_recovery2").format(
+                cnt=_unknown_streak, screen=_screen_phrase_for_unknown()))
         _maybe_scroll_to_top(force=True, label=f"unknown_streak_{_unknown_streak}")
         time.sleep(0.8)
         prepare_ui()
@@ -1389,3 +1398,20 @@ def get_last_detailed_status():
     v1.7.4: Returns the detailed supplementary state classified from the last screen
     OCR by get_backup_status(); None when absent."""
     return _last_detailed_status_result
+
+
+def _screen_phrase_for_unknown():
+    """v1.11.2 新規: UNKNOWN 検知 時 に 、 画面 から 読み取れ た 文言 (短縮 表現) を 返す 。
+    認識 でき なかっ た とき は 「認識 でき ず」 の 定型 文言 を 返す 。
+
+    v1.11.2: Returns a short on-screen phrase for UNKNOWN detection, or a generic
+    "could not recognize" message when no state was classified."""
+    code = _last_detailed_status_result
+    if code:
+        try:
+            _s = tr(f"ui.screen.{code}")
+            if _s and not str(_s).startswith("ui.screen."):
+                return str(_s)
+        except Exception:
+            pass
+    return tr("ui.screen.unknown")

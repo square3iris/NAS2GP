@@ -64,6 +64,14 @@ removed desktop-GUI era is compressed).
 - **Stats page description cleaned up (v1.11.1)**: removed the description about the file list (already moved to the Management page) from `web.stats.desc`, leaving only the explanation of the charts.
 - **Version bump (v1.11.1)**: `settings.APP_VERSION` changed from `1.11.0` to `1.11.1`.
 
+### v1.11.2 — Log cleanup and a clearer UNKNOWN-detection message
+
+- **Removed the "wait reason" line (v1.11.2)**: the recurring `待機理由: ...` line during backup waiting was dropped as noise. The always-empty acceptance-hint display mechanism and the now-unused `log.gp.wait_reason` key were removed too.
+- **Improved UNKNOWN-detection message (v1.11.2)**: the `[!] UNKNOWN ...` line now also shows the wording read from the screen (e.g. "バックアップの準備中" / "フォトライブラリをスキャンしています"). When nothing is recognized it prints "could not recognize the on-screen text".
+- **Expanded screen-wording dictionary (v1.11.2)**: added no-space variants to the `_classify_detailed_status` keywords (e.g. "バックアップの準備中", "スキャン中", "確認中", "アップロード中"). Previously only space-separated keywords matched, so real on-screen text could be missed and treated as unknown.
+- **Related i18n keys (v1.11.2)**: added `ui.screen.*` (8 keys) to `lang/ja.py` and `lang/en.py`, and added `{screen}` to `ui.scroll.unknown_recovery1/2`. Removed the now-unused `log.gp.wait_reason`.
+- **Version bump (v1.11.2)**: `settings.APP_VERSION` changed from `1.11.1` to `1.11.2`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.

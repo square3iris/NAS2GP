@@ -490,19 +490,10 @@ class UploadWorker:
 
             # ===== DEBUG BAR (v1.7.4 簡易版 → v1.7.5 LOG_VERBOSITY 対応 + GP 行 分割
             # ===== DEBUG BAR (v1.7.4 simple -> v1.7.5 LOG_VERBOSITY aware, GP line split)
-            # v1.7.5 追加:
-            #   (1) 見やす さ 優先 で 「GP 進捗 行 と 「待機理由/受理条件」 を _別 行 に 分割 し て 表示 する (改行 入れる)。
-            #   (2) standard/minimal で は Status / recent を 削除 し て い 。
-            # v1.7.5: (1) Split the GP progress line and the wait-reason line for
-            #   readability. (2) Remove Status / recent lines in standard/minimal.
-            try:
-                from nas2gp.core.settings import LOG_VERBOSITY as _LV_STR
-                _lv = (_LV_STR or "standard").lower() if isinstance(_LV_STR, str) else "standard"
-            except Exception:
-                _lv = "standard"
-            _is_minimal = (_lv == "minimal")
+            # v1.11.2: 待機理由 (受理条件 ヒント) は 全廃 し 、 GP 進捗 行 のみ 表示 する 。
+            # v1.11.2: The wait reason (acceptance hint) was removed; only the GP
+            #   progress line is printed.
             _gp_line = ""
-            _other_hints = []
             # v1.7.5 新規: Google Photos の 画面 から 直接 「残り枚数 / 残り時間」 が 取れ て い れ ば 最優先 表示。
             # v1.7.5: If the remaining items / time is directly readable from the
             # Google Photos screen, show it with top priority.
@@ -553,37 +544,12 @@ class UploadWorker:
                 if _gp_parts:
                     _gp_line = "Google Photos: " + " / ".join(_gp_parts)
                     _has_gp_line = True
-            # v1.7.15: 受理条件 (最速 G / 標準 B / 最終保険 Z) の 内部 ヒント は
-            #   ノイズ の ため 非表示 に する 。 ユーザー 向け の 「待機理由」 のみ 残す 。
-            # v1.7.15: Hide internal acceptance-rule hints (fastest G / standard B /
-            # last-resort Z) as noise; keep only the user-facing wait reason.
-            if not (g_saw_ok and g_elapsed_ok) and not g_saw_ok:
-                _other_hints.append(tr("log.gp.wait_reason"))
-            if _gp_line or _other_hints:
-                # ★ v1.7.5 見 やす さ 改善: 「GP 進捗」 と 「ヒント/受理条件」 を 改行 で 分離 。
-                #   (旧来: 1 行 に / 区切り で 全部 乗せ て い た ため 横長 に なり 見 にくかっ た)
-                # ★ v1.7.5 readability: Split the GP progress and the hint/acceptance
-                #   fields with a line break (previously all on one long line).
-                if _is_minimal:
-                    _max_other = 1 if _has_gp_line else 2
-                    _shown_other = _other_hints[:_max_other]
-                    if _gp_line:
-                        print("  ▶ " + _gp_line)
-                    if _shown_other:
-                        print("    " + " / ".join(_shown_other))
-                else:
-                    # standard / full: GP は 1 行 目 、 ヒント は 最大 3 件 を 2 行 目 以降 に 分割 表示
-                    # standard / full: GP on line 1, up to 3 hints split onto the following lines.
-                    if _gp_line:
-                        print("  ▶ " + _gp_line)
-                    if _other_hints:
-                        # 最初 の 3 件 を 優先 し て さら に 2 行 に 分け て 表示 (見 やす さ 優先)
-                        # Show the first 3 hints split over two lines for readability.
-                        first_other = _other_hints[0]
-                        rest = _other_hints[1:3]
-                        print("    " + first_other)
-                        if rest:
-                            print("    " + " / ".join(rest))
+            # v1.11.2: 受理条件 ヒント 行 (旧 「待機理由」) は ノイズ の ため 全廃 し 、
+            #   GP 進捗 行 のみ を 表示 する 。
+            # v1.11.2: The acceptance-hint line (formerly "wait reason") was removed
+            #   entirely as noise; only the GP progress line is shown.
+            if _gp_line:
+                print("  ▶ " + _gp_line)
             # ================ END DEBUG BAR ================
 
             # v1.7.15: 進捗 検出 (無進捗 タイマー の リセット 判定)。
