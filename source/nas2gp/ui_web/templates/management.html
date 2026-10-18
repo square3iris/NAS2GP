@@ -20,6 +20,19 @@
   </section>
 
   <section class="card">
+    <h2>{{ tr('web.mgmt.repair.title') }}</h2>
+    <div class="small" style="margin-top:6px">{{ tr('web.mgmt.repair.desc') }}</div>
+
+    <div style="margin-top:14px; border-top:1px solid #334155; padding-top:12px;">
+      <div class="small" style="margin-bottom:8px">{{ tr('web.device.reconcile_note') }}</div>
+      <button class="ghost" onclick="callReconcileDelete()">{{ tr('web.device.reconcile_btn') }}</button>
+      <div class="small" style="margin:10px 0 8px">{{ tr('web.device.requeue_note') }}</div>
+      <button class="ghost" onclick="callRequeueIncomplete()">{{ tr('web.device.requeue_btn') }}</button>
+    </div>
+    <div id="mgmt-repair-msg" class="small" style="margin-top:10px; min-height:16px;"></div>
+  </section>
+
+  <section class="card">
     <h2>{{ tr('web.mgmt.reset.title') }}</h2>
     <div class="inline-note warn">⚠ {{ tr('web.mgmt.reset.note1') }}<br>{{ tr('web.mgmt.reset.note2') }}</div>
 
@@ -209,6 +222,90 @@ async function confirmReset(){
     }
   } catch(e){
     _msg(tf('web.mgmt.exec_fail', {err: e}), 'var(--err)');
+  }
+}
+
+// ============================================================
+// v1.13.5: 状態の復旧 (端末ページから移設)
+// v1.13.5: State repair (moved from the device page)
+// ============================================================
+function _rmsg(text, color){
+  const el = $('mgmt-repair-msg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = color || 'var(--sub)';
+}
+function _rGb(bytes){
+  return (Number(bytes || 0) / 1073741824).toFixed(2);
+}
+
+async function callReconcileDelete(){
+  _rmsg(t('web.device.reconcile_running'), 'var(--sub)');
+  try {
+    const r = await fetch('/api/device/reconcile_delete', { method: 'POST' });
+    if (r.status === 409) {
+      const j = await r.json();
+      _rmsg(j.message || t('web.consent.required'), 'var(--err)');
+      return;
+    }
+    const j = await r.json();
+    if (!j.ok) {
+      _rmsg(tf('web.device.reconcile_error', {err: j.error || ''}), 'var(--err)');
+      return;
+    }
+    if (!j.stale) {
+      _rmsg(t('web.device.reconcile_none'), 'var(--ok)');
+      return;
+    }
+    _rmsg(tf('web.device.reconcile_result', {
+      device: j.device_files || 0, stale: j.stale || 0, fixed: j.fixed || 0
+    }), 'var(--ok)');
+  } catch(e){
+    _rmsg(tf('web.device.reconcile_error', {err: e}), 'var(--err)');
+  }
+}
+
+async function callRequeueIncomplete(){
+  _rmsg('');
+  let pv = null;
+  try {
+    const r = await fetch('/api/device/requeue_incomplete/preview');
+    if (r.status === 409) {
+      const j = await r.json();
+      _rmsg(j.message || t('web.consent.required'), 'var(--err)');
+      return;
+    }
+    pv = await r.json();
+  } catch(e){ _rmsg(tf('web.device.requeue_error', {err: e}), 'var(--err)'); return; }
+  if (!pv || pv.ok !== true) {
+    _rmsg(tf('web.device.requeue_error', {err: (pv && pv.error) || ''}), 'var(--err)');
+    return;
+  }
+  if (!pv.total) {
+    _rmsg(t('web.device.requeue_none'), 'var(--sub)');
+    return;
+  }
+  const msg = tf('web.device.requeue_confirm', {
+    total: pv.total, gb: _rGb(pv.bytes), gone: pv.gone || 0,
+    stay: Math.max(0, (pv.total || 0) - (pv.gone || 0))
+  });
+  if (!confirm(msg)) return;
+  _rmsg(t('web.device.requeue_running'), 'var(--sub)');
+  try {
+    const r = await fetch('/api/device/requeue_incomplete', { method:'POST' });
+    if (r.status === 409) {
+      const j = await r.json();
+      _rmsg(j.message || t('web.consent.required'), 'var(--err)');
+      return;
+    }
+    const j = await r.json();
+    if (!j.ok) {
+      _rmsg(tf('web.device.requeue_error', {err: j.error || ''}), 'var(--err)');
+      return;
+    }
+    _rmsg(tf('web.device.requeue_result', {n: j.requeued || 0}), 'var(--ok)');
+  } catch(e){
+    _rmsg(tf('web.device.requeue_error', {err: e}), 'var(--err)');
   }
 }
 

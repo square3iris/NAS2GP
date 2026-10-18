@@ -519,24 +519,29 @@ class Database(
             return []
 
     def get_phone_transferred_files(self, limit=None):
-        """v1.11.3 Web UI 「NAS2GP が 転送 し た ファイル のみ 削除」 用:
-        NAS2GP が 端末 へ 転送 済み (phone_transfer_state='DONE') で 、 まだ 端末 から
+        """v1.11.3 / v1.13.5 Web UI 「NAS2GP が 転送 し た ファイル のみ 削除」 用:
+        NAS2GP が 端末 へ 転送 済み (phone_transfer_state='DONE') で 、 Google Photos の
+        バックアップ も 完了 済み (google_photos_state='DONE') の うち 、 まだ 端末 から
         削除 さ れ て い ない (phone_delete_state != 'DONE') ファイル 一覧 を 返す。
-        Google Photos の バックアップ 完了 (google_photos_state='DONE') は 条件 に
-        含め ない 。 作業 フォルダ は NAS2GP 専用 (DCIM 配下 のみ 選択 可) の ため 、
-        転送 済み ファイル を 消し て も 個人 の 写真 は 巻き込ま ず 、 原本 は NAS 側 に
-        残る 。
 
-        v1.11.3: for the Web UI "delete NAS2GP-transferred files" button. Returns
-        files already transferred to the device but not yet deleted, WITHOUT requiring
-        google_photos_state='DONE'. The working folder is dedicated to NAS2GP (only
-        DCIM subfolders are selectable), so personal photos are never touched and the
-        originals remain on the NAS.
+        v1.13.5: Google Photos 未 完了 の ファイル は 対象 から 除外 する 。 未 完了 の
+        まま 端末 から 消す と 「転送 完了 / GP 未 完了 / 削除 済み」 の 取り残し 行 が
+        大量 に 発生 し 、 それ ら は Google Photos に 入ら ない まま 端末 から 失わ れる
+        (原本 は NAS に 残る が クラウド 側 に は 入ら ない)。 未 完了 分 を やり直す には
+        「未 完了 を 再 転送 対象 に 戻す」 (requeue_incomplete_transfers) を 使う 。
+
+        v1.11.3: for the Web UI "delete NAS2GP-transferred files" button. Returns files
+        already transferred and already backed up to Google Photos, but not yet deleted.
+        v1.13.5: files whose Google Photos backup is unfinished are excluded, because
+        deleting them leaves "transferred / GP unfinished / deleted" leftovers that never
+        reach the cloud (the original stays on the NAS). Use
+        requeue_incomplete_transfers() to retry those instead.
         """
         base_sql = """
         SELECT path, filename
         FROM files
         WHERE phone_transfer_state = 'DONE'
+          AND google_photos_state = 'DONE'
           AND COALESCE(phone_delete_state, 'PENDING') IN ('PENDING', 'FAILED')
         ORDER BY id ASC
         """
@@ -550,31 +555,118 @@ class Database(
             return []
 
     def get_phone_delete_summary(self):
-        """v1.11.3 Web UI の 削除 前 確認 表示 用 サマリ 。
-        get_phone_transferred_files() の 対象 を 「Google Photos 完了 済み」 と
-        「未 完了」 に 分け た 件数 を 返す 。 戻り値: {"total","gp_done","gp_pending"}
+        """v1.11.3 / v1.13.5 Web UI の 削除 前 確認 表示 用 サマリ 。
+        get_phone_transferred_files() の 対象 (転送 完了 ・ GP 完了 済み ・ 未 削除) の
+        件数 と 容量 、 および 対象 から 除外 し た 「GP 未 完了」 の 件数 ・ 容量 を 返す 。
+        除外 分 が ある こと を UI で 案内 する ため に 併せて 返す 。
+        戻り値: {"total", "bytes", "excluded", "excluded_bytes"}
 
-        v1.11.3: summary for the pre-delete confirmation. Splits the
-        get_phone_transferred_files() target into GP-done vs GP-unfinished counts.
+        v1.11.3 / v1.13.5: summary for the pre-delete confirmation. Returns the count and
+        size of the deletion target (transferred, GP done, not yet deleted) plus the count
+        and size of the excluded GP-unfinished files, so the UI can explain the exclusion.
         """
-        out = {"total": 0, "gp_done": 0, "gp_pending": 0}
+        out = {"total": 0, "bytes": 0, "excluded": 0, "excluded_bytes": 0}
         try:
             self.cursor.execute("""
             SELECT
-              COALESCE(SUM(CASE WHEN google_photos_state = 'DONE' THEN 1 ELSE 0 END), 0) AS gp_done,
-              COALESCE(SUM(CASE WHEN COALESCE(google_photos_state, '') <> 'DONE' THEN 1 ELSE 0 END), 0) AS gp_pending
+              COALESCE(SUM(CASE WHEN google_photos_state = 'DONE' THEN 1 ELSE 0 END), 0) AS ok_cnt,
+              COALESCE(SUM(CASE WHEN google_photos_state = 'DONE' THEN size ELSE 0 END), 0) AS ok_bytes,
+              COALESCE(SUM(CASE WHEN COALESCE(google_photos_state, '') <> 'DONE' THEN 1 ELSE 0 END), 0) AS ng_cnt,
+              COALESCE(SUM(CASE WHEN COALESCE(google_photos_state, '') <> 'DONE' THEN size ELSE 0 END), 0) AS ng_bytes
             FROM files
             WHERE phone_transfer_state = 'DONE'
               AND COALESCE(phone_delete_state, 'PENDING') IN ('PENDING', 'FAILED')
             """)
             row = self.cursor.fetchone()
             if row is not None:
-                out["gp_done"] = int(row["gp_done"] or 0)
-                out["gp_pending"] = int(row["gp_pending"] or 0)
-                out["total"] = out["gp_done"] + out["gp_pending"]
+                out["total"] = int(row["ok_cnt"] or 0)
+                out["bytes"] = int(row["ok_bytes"] or 0)
+                out["excluded"] = int(row["ng_cnt"] or 0)
+                out["excluded_bytes"] = int(row["ng_bytes"] or 0)
         except Exception:
             pass
         return out
+
+    def _incomplete_requeue_where(self):
+        """v1.13.5: 再転送 対象 (= 「未完了」) を 判定 する 共通 SQL 条件 。
+        転送 / Google Photos / 端末削除 の 3 工程 すべて が DONE の 行 は 完了 済み と し て
+        除外 し 、 3 工程 すべて が PENDING (初期値) の 行 は 戻し て も 変化 し ない ため
+        対象 から 除く 。 これ により 「端末削除 まで 到達 し た もの 以外」 が すべて 対象 に
+        な る (転送 失敗 の まま 放置 さ れ た 行 も 再 試行 さ れる)。
+
+        v1.13.5: shared SQL predicate for "incomplete" rows. Rows where all three stages
+        (transfer / Google Photos / device delete) are DONE are complete and excluded; rows
+        already fully PENDING (initial state) are no-ops and also excluded.
+        """
+        return """
+            NOT (phone_transfer_state = 'DONE'
+                 AND COALESCE(google_photos_state, '') = 'DONE'
+                 AND COALESCE(phone_delete_state, '') = 'DONE')
+            AND NOT (COALESCE(phone_transfer_state, '') = 'PENDING'
+                 AND COALESCE(google_photos_state, '') = 'PENDING'
+                 AND COALESCE(phone_delete_state, '') = 'PENDING')
+        """
+
+    def get_incomplete_transfer_summary(self):
+        """v1.13.5: 転送 / Google Photos / 端末削除 の いずれ か が 未 完了 の まま 残っ て
+        い る 行 の 件数 ・ 容量 と 、 その うち 端末 から 既に 消え て い る
+        (phone_delete_state='DONE') 件数 を 返す 。 これ ら は 再 転送 で しか 復旧 でき ない
+        (原本 は NAS に 残っ て いる)。 戻り値: {"total", "bytes", "gone"}
+
+        v1.13.5: summary of rows with any of the three stages still unfinished, plus the
+        subset already removed from the device. They can only be recovered by re-transferring
+        (the originals remain on the NAS).
+        """
+        out = {"total": 0, "bytes": 0, "gone": 0}
+        try:
+            self.cursor.execute(f"""
+            SELECT
+              COUNT(1) AS cnt,
+              COALESCE(SUM(size), 0) AS bytes,
+              COALESCE(SUM(CASE WHEN COALESCE(phone_delete_state, '') = 'DONE' THEN 1 ELSE 0 END), 0) AS gone
+            FROM files
+            WHERE {self._incomplete_requeue_where()}
+            """)
+            row = self.cursor.fetchone()
+            if row is not None:
+                out["total"] = int(row["cnt"] or 0)
+                out["bytes"] = int(row["bytes"] or 0)
+                out["gone"] = int(row["gone"] or 0)
+        except Exception:
+            pass
+        return out
+
+    def requeue_incomplete_transfers(self):
+        """v1.13.5: 3 工程 の いずれ か が 未 完了 の 行 を 再 転送 対象 へ 戻す (初期値 の
+        行 は 除く)。 端末 から 既に 消え て い る ファイル は NAS から もう 一度 送ら れ 、
+        端末 に まだ 残っ て いる ファイル は 同名 SKIP 判定 (UploadWorker.upload) で
+        実 送信 せ ず に バックアップ 待ち ・ 削除 工程 だけ が やり直さ れる 。
+        Google Photos 完了 済み の 行 は すべて 3 工程 DONE の ため 対象 に 入ら ず 、
+        完了 済み の GP 状態 を 巻き戻す こと は ない 。 NAS の 原本 は 一切 削除 し ない 。
+        戻り値: 更新 し た 行数。
+
+        v1.13.5: re-queue rows with any unfinished stage (excluding initial rows). Files
+        already gone from the device are pushed again; files still on the device are skipped
+        by the same-name SKIP check (UploadWorker.upload) and only the backup-wait / delete
+        phases are retried. Rows whose Google Photos is done are always fully DONE, so no
+        completed GP state is ever rolled back. No NAS original is ever deleted.
+        """
+        try:
+            self.cursor.execute(f"""
+            UPDATE files
+            SET
+                phone_transfer_state='PENDING',
+                google_photos_state='PENDING',
+                phone_delete_state='PENDING',
+                deleted_at=NULL,
+                retry_count=0,
+                last_error=NULL,
+                updated_at=datetime('now', 'localtime')
+            WHERE {self._incomplete_requeue_where()}
+            """)
+            return int(self.cursor.rowcount or 0)
+        except Exception:
+            return 0
 
     def mark_phone_delete_done_bulk(self, paths_list):
         """Pre-1 GC 削除 成功 後 の phone_delete_state 一括 'DONE' 更新。

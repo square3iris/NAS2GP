@@ -1230,19 +1230,20 @@ def create_app() -> FastAPI:
 
     @app.get("/api/device/delete_uploaded/preview")
     async def api_device_delete_uploaded_preview():
-        """v1.11.3: 「NAS2GP が 転送 し た ファイル のみ 削除」 の 事前 確認 用。
-        削除 対象 件数 を Google Photos 完了 済み / 未 完了 に 分け て 返す 。
-        未 完了 分 は Google Photos に アップロード さ れ ず に 端末 から 消える ため 、
-        Web UI で その 件数 を 確認 さ せる ため の API。
+        """v1.11.3 / v1.13.5: 「NAS2GP が 転送 し た ファイル のみ 削除」 の 事前 確認 用。
+        削除 対象 (転送 完了 ・ Google Photos 完了 済み ・ 未 削除) の 件数 と 容量 、
+        および 対象 から 除外 し た 「GP 未 完了」 の 件数 ・ 容量 を 返す (v1.13.5 で
+        未 完了 分 は 削除 対象 から 除外)。
 
-        v1.11.3: preview for the "delete NAS2GP-transferred files" button; returns the
-        target count split into Google Photos done / unfinished, so the Web UI can warn
-        how many not-yet-uploaded files would be removed.
+        v1.11.3 / v1.13.5: preview for the "delete NAS2GP-transferred files" button;
+        returns the target count/size (transferred, GP done, not yet deleted) and the
+        count/size of the excluded GP-unfinished files.
         """
         _blk = _consent_block()
         if _blk:
             return JSONResponse(status_code=409, content=_blk)
-        result = {"ok": False, "total": 0, "gp_done": 0, "gp_pending": 0, "error": None}
+        result = {"ok": False, "total": 0, "bytes": 0, "excluded": 0,
+                  "excluded_bytes": 0, "error": None}
         try:
             from nas2gp.storage.db import Database as _DbP
             _db = _DbP()
@@ -1254,8 +1255,9 @@ def create_app() -> FastAPI:
                 except Exception:
                     pass
             result["total"] = int(_sum.get("total") or 0)
-            result["gp_done"] = int(_sum.get("gp_done") or 0)
-            result["gp_pending"] = int(_sum.get("gp_pending") or 0)
+            result["bytes"] = int(_sum.get("bytes") or 0)
+            result["excluded"] = int(_sum.get("excluded") or 0)
+            result["excluded_bytes"] = int(_sum.get("excluded_bytes") or 0)
             result["ok"] = True
         except Exception as e:
             result["error"] = f"{type(e).__name__}: {e}"
@@ -1264,16 +1266,19 @@ def create_app() -> FastAPI:
     @app.post("/api/device/delete_uploaded")
     async def api_device_delete_uploaded():
         """
-        v1.11.3: NAS2GP が 端末 へ 転送 し た ファイル (phone_transfer_state='DONE') で 、
-        まだ 端末 から 削除 さ れ て い ない もの を まとめて 削除 する 。 Google Photos の
-        バックアップ 完了 は 条件 に 含め ない (未 完了 分 も 端末 から 消える が 、 原本 は NAS に
-        残る)。 実在 確認 つき で 削除 し 、 実際 に 消せ た もの だけ DB を DONE に 整合 さ せる 。
-        個人 の 写真 (NAS2GP 管理 外) は 対象 に し ない 。
+        v1.11.3 / v1.13.5: NAS2GP が 端末 へ 転送 し (phone_transfer_state='DONE')、
+        Google Photos の バックアップ も 完了 済み (google_photos_state='DONE') で 、
+        まだ 端末 から 削除 さ れ て い ない もの を まとめて 削除 する 。 実在 確認 つき で
+        削除 し 、 実際 に 消せ た もの だけ DB を DONE に 整合 さ せる 。 個人 の 写真
+        (NAS2GP 管理 外) は 対象 に し ない 。
+        v1.13.5: GP 未 完了 の ファイル は 対象 から 除外 する (未 バックアップ の まま
+        端末 から 消す と Google Photos に 入ら ない ため)。 未 完了 分 は
+        「未 完了 を 再 転送 対象 に 戻す」 で やり直す 。
 
-        v1.11.3: Deletes every file NAS2GP transferred to the device
-        (phone_transfer_state='DONE') that has not been removed yet, regardless of
-        Google Photos backup state. Verifies existence, and reconciles to DONE only
-        the files actually removed. Personal photos outside NAS2GP are never touched.
+        v1.11.3 / v1.13.5: Deletes files NAS2GP transferred to the device and already
+        backed up to Google Photos, but not yet removed. Verifies existence, and
+        reconciles to DONE only the files actually removed. Personal photos outside
+        NAS2GP are never touched. v1.13.5: GP-unfinished files are excluded.
         """
         _blk = _consent_block()
         if _blk:
@@ -1363,6 +1368,90 @@ def create_app() -> FastAPI:
             try:
                 from nas2gp.core.logger import Logger as _LgE
                 _LgE.error(f"[Web][転送ファイル削除] 全体 例外: {result['error']}")
+            except Exception:
+                pass
+        return result
+
+    @app.get("/api/device/requeue_incomplete/preview")
+    async def api_device_requeue_incomplete_preview():
+        """v1.13.5: 「未 完了 を 再 転送 対象 に 戻す」 の 事前 確認 用。
+        転送 / Google Photos / 端末削除 の いずれ か が 未 完了 の まま 残っ て い る 行 の
+        件数 と 容量 、 および その うち 端末 から 既に 消え て い る (削除 DONE) 件数 を
+        返す 。 既に 3 工程 とも PENDING (初期値) の 行 は 変化 し ない ため 対象 に 含め ない 。
+        端末 に 残っ て い る 分 は 再 送信 さ れ ず (同名 SKIP)、 バックアップ 待ち から
+        やり直さ れる 。
+
+        v1.13.5: preview for "re-queue unfinished files". Returns the count/size of rows with
+        any unfinished stage (transfer / Google Photos / device delete), excluding rows
+        already fully PENDING (initial), plus how many are already gone from the device.
+        """
+        _blk = _consent_block()
+        if _blk:
+            return JSONResponse(status_code=409, content=_blk)
+        result = {"ok": False, "total": 0, "bytes": 0, "gone": 0, "error": None}
+        try:
+            from nas2gp.storage.db import Database as _DbRQ
+            _db = _DbRQ()
+            try:
+                _sum = _db.get_incomplete_transfer_summary() or {}
+            finally:
+                try:
+                    _db.close()
+                except Exception:
+                    pass
+            result["total"] = int(_sum.get("total") or 0)
+            result["bytes"] = int(_sum.get("bytes") or 0)
+            result["gone"] = int(_sum.get("gone") or 0)
+            result["ok"] = True
+        except Exception as e:
+            result["error"] = f"{type(e).__name__}: {e}"
+        return result
+
+    @app.post("/api/device/requeue_incomplete")
+    async def api_device_requeue_incomplete():
+        """v1.13.5: 3 工程 (転送 / Google Photos / 端末削除) の いずれ か が 未 完了 の 行 を
+        再 転送 対象 (phone_transfer_state='PENDING') へ 戻す 。 既に 3 工程 とも PENDING
+        の 初期値 行 は 変化 し ない ため 対象 外 。 端末 から 既に 消え て い る 分 は NAS から
+        再 送 さ れ 、 端末 に 残っ て い る 分 は 同名 SKIP で 実 送信 せ ず に バックアップ 待ち ・
+        削除 工程 だけ が やり直さ れる 。 Google Photos 完了 済み は すべて 3 工程 DONE の
+        ため 対象 に 入ら ず 、 完了 済み GP を 巻き戻す こと は ない 。 NAS の 原本 は 削除 し ない 。
+
+        v1.13.5: re-queue rows with any unfinished stage (transfer / Google Photos / device
+        delete); rows already fully PENDING (initial) are excluded. Files gone from the device
+        are pushed again; files still on the device are skipped and only the backup-wait /
+        delete phases are retried. Completed GP rows are always fully DONE, so no completed GP
+        state is rolled back. No NAS original is deleted.
+        """
+        _blk = _consent_block()
+        if _blk:
+            return JSONResponse(status_code=409, content=_blk)
+        result = {"ok": False, "requeued": 0, "bytes": 0, "error": None}
+        try:
+            from nas2gp.storage.db import Database as _DbRQ
+            from nas2gp.core.logger import Logger as _LgRQ
+            _db = _DbRQ()
+            try:
+                _sum = _db.get_incomplete_transfer_summary() or {}
+                _n = int(_db.requeue_incomplete_transfers() or 0)
+                if _n:
+                    _db.commit()
+            finally:
+                try:
+                    _db.close()
+                except Exception:
+                    pass
+            result["requeued"] = _n
+            result["bytes"] = int(_sum.get("bytes") or 0)
+            result["ok"] = True
+            _LgRQ.info(
+                f"[Web][未完了再転送] 再転送対象に戻しました "
+                f"件数={_n} / 端末に無い={int(_sum.get('gone') or 0)}"
+            )
+        except Exception as e:
+            result["error"] = f"{type(e).__name__}: {e}"
+            try:
+                from nas2gp.core.logger import Logger as _LgRQ2
+                _LgRQ2.error(f"[Web][未完了再転送] 失敗: {result['error']}")
             except Exception:
                 pass
         return result

@@ -224,7 +224,9 @@ POST /api/maintenance/factory_reset   factory reset
 GET  /api/device/workdir              get device working folder
 POST /api/device/workdir              change device working folder (DCIM-only, saved to config)
 GET  /api/device/browse               list DCIM subfolders (?path=)
-POST /api/device/delete_uploaded      delete only NAS2GP-transferred files (safe)
+POST /api/device/delete_uploaded      delete only NAS2GP-transferred files (safe; GP-done files only, v1.13.5)
+GET  /api/device/requeue_incomplete/preview  count/size of unfinished rows (any of transfer / GP / delete) (v1.13.5)
+POST /api/device/requeue_incomplete   re-queue unfinished rows (fully-done rows excluded, v1.13.5)
 POST /api/device/reconcile_delete     reconcile delete state (re-queue rows recorded as DONE that still exist on the device)
 POST /api/open_path                   open a folder
 POST /api/start                       start sync
@@ -235,7 +237,7 @@ GET  /progress/sse                    progress SSE
 
 > `POST /api/open_path` calls `open_in_file_manager()` in `core/util.py`. Windows uses `os.startfile`, macOS uses `open`, Linux uses `xdg-open`, so "open folder" works on Windows / macOS / Linux (v1.9.0).
 >
-> `POST /api/start` (start sync) and `POST /api/device/delete_uploaded` (delete transferred files) check consent first and return HTTP 409 with `{"ok": false, "error": "consent_required", "message": "..."}` when not accepted (v1.10.0). The consent state is managed by `nas2gp.core.consent` in `config/consent.json`.
+> `POST /api/start` (start sync), `POST /api/device/delete_uploaded` (delete transferred files) and `POST /api/device/requeue_incomplete` (re-queue unfinished, v1.13.5) check consent first and return HTTP 409 with `{"ok": false, "error": "consent_required", "message": "..."}` when not accepted (v1.10.0). The consent state is managed by `nas2gp.core.consent` in `config/consent.json`.
 
 ---
 

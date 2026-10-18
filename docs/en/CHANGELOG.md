@@ -131,6 +131,15 @@ removed desktop-GUI era is compressed).
 - **Re-apply only while dimming is active (v1.13.4)**: the new helper `reapply_night_brightness()` acts only while a dim snapshot is held (i.e. dimmed for a sync run), so unrelated UI prep outside a run never darkens the screen by accident. Calling it repeatedly just re-sets the same value and is safe (the original values kept for restore are preserved).
 - **Version bump (v1.13.4)**: `settings.APP_VERSION` changed from `1.13.3` to `1.13.4`.
 
+### v1.13.5 — Re-transfer unfinished leftovers
+
+- **Detect and re-queue leftovers (v1.13.5)**: added a way to bulk-return rows where any of the three stages (transfer / Google Photos backup / device delete) is not `DONE` to the transfer queue (`PENDING`). Rows already fully `PENDING` (initial state) are excluded because re-queuing them changes nothing. From the "Re-queue unfinished files" button in the Management page's "State repair" card you can check the count, the size and how many of them are already gone from the device, then run it. New APIs `GET /api/device/requeue_incomplete/preview` / `POST /api/device/requeue_incomplete`, new DB methods `get_incomplete_transfer_summary()` / `requeue_incomplete_transfers()`. Returns 409 when consent has not been given.
+- **No roll-back of completed GP (v1.13.5)**: rows whose Google Photos is done are always fully `DONE`, so they are never targeted and a completed GP state is never rolled back to unfinished. Rows stuck at transfer `FAILED` are now retried as well.
+- **Minimal re-sending (v1.13.5)**: files already gone from the device are sent again from the NAS, while files still on the device are not re-sent thanks to the same-name SKIP check (`UploadWorker.upload`) — only the backup-wait and delete phases are re-run, so no device space is wasted. The originals on the NAS are never deleted.
+- **Safer manual deletion (v1.13.5)**: "delete only files that NAS2GP transferred" is now **limited to files whose Google Photos state is `DONE` (`google_photos_state='DONE'`)**, because deleting a not-yet-backed-up file from the device loses it from Google Photos (the original stays on the NAS but never reaches the cloud) and causes a flood of "transfer DONE / GP incomplete / deleted" leftovers. The excluded count and size are shown in the pre-delete confirmation dialog (`get_phone_delete_summary()` now also returns `excluded` / `excluded_bytes`).
+- **State repair moved to the Management page (v1.13.5)**: moved "Reconcile delete state" and "Re-queue unfinished files" from the device page to the new "♻️ State repair" card on the Management page (above Data reset). The device page is now limited to real device operations (delete transferred files / delete everything under DCIM). New i18n keys `web.mgmt.repair.title` / `web.mgmt.repair.desc`.
+- **Version bump (v1.13.5)**: `settings.APP_VERSION` changed from `1.13.4` to `1.13.5`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.

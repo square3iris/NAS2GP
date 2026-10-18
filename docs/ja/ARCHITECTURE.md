@@ -223,7 +223,9 @@ POST /api/maintenance/factory_reset   工場出荷時リセット
 GET  /api/device/workdir              端末 作業フォルダ 取得
 POST /api/device/workdir              端末 作業フォルダ 変更 (DCIM 配下 のみ, config 保存)
 GET  /api/device/browse               DCIM 配下 サブフォルダ 一覧 (?path=)
-POST /api/device/delete_uploaded      NAS2GP が 転送 し た ファイル のみ 削除 (安全版)
+POST /api/device/delete_uploaded      NAS2GP が 転送 し た ファイル のみ 削除 (安全版 / GP 完了 済み が 対象, v1.13.5)
+GET  /api/device/requeue_incomplete/preview  未 完了 (転送 / GP / 削除 の いずれ か) の 件数 ・ 容量 を 返す (v1.13.5)
+POST /api/device/requeue_incomplete   未 完了 の 行 を 再 転送 対象 へ 戻す (3 工程 完了 済み は 除外, v1.13.5)
 POST /api/device/reconcile_delete     削除 状態 の 整合 (端末 に 実在 する の に DB が DONE の 行 を PENDING へ 戻す)
 POST /api/open_path                   フォルダを開く
 POST /api/start                       同期開始
@@ -234,7 +236,7 @@ GET  /progress/sse                    進捗 SSE
 
 > `POST /api/open_path` は `core/util.py` の `open_in_file_manager()` を呼び出します。Windows は `os.startfile`、macOS は `open`、Linux は `xdg-open` を使い分け、「フォルダを開く」が Windows / macOS / Linux で動作します (v1.9.0)。
 >
-> `POST /api/start` (同期開始) と `POST /api/device/delete_uploaded` (転送済みファイル削除) は、先頭で利用同意を確認し、未同意なら HTTP 409 と `{"ok": false, "error": "consent_required", "message": "..."}` を返します (v1.10.0)。同意状態は `nas2gp.core.consent` が `config/consent.json` で管理します。
+> `POST /api/start` (同期開始) と `POST /api/device/delete_uploaded` (転送済みファイル削除) および `POST /api/device/requeue_incomplete` (未 完了 の 再 転送, v1.13.5) は、先頭で利用同意を確認し、未同意なら HTTP 409 と `{"ok": false, "error": "consent_required", "message": "..."}` を返します (v1.10.0)。同意状態は `nas2gp.core.consent` が `config/consent.json` で管理します。
 
 ---
 
