@@ -35,6 +35,7 @@ from nas2gp.device.ui import (
     try_close_tutorial,
     get_last_detailed_status,
     extract_google_photos_progress,
+    reapply_night_brightness,
 )
 from nas2gp.core.logger import Logger
 from nas2gp.core.i18n import tr
@@ -323,6 +324,17 @@ class UploadWorker:
         lock_count = 0
 
         while True:
+
+            # v1.13.4: 待機 中 は 画面 Wake / Photos 再起動 で 輝度 が 既定 に 戻る こと が
+            #   ある ため 、 各 tick で 減光 を 再適用 して 暗さ を 維持 する
+            #   (減光 中 の とき だけ 作用 。 未 減光 なら 何 も し ない)。
+            # v1.13.4: during the wait a screen wake / Photos restart can reset the
+            #   brightness, so re-apply the dim on every tick to keep it dimmed
+            #   (only while a dim is active; no-op otherwise).
+            try:
+                reapply_night_brightness()
+            except Exception:
+                pass
 
             status = get_backup_status()
             elapsed = time.time() - start

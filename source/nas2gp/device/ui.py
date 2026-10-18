@@ -331,6 +331,25 @@ def apply_night_brightness():
         return False
 
 
+def reapply_night_brightness():
+    """減光 中 (set_brightness 済み = スナップショット 保持 中) の とき だけ 減光 を 再適用 する 。
+
+    画面 Wake (KEYCODE_WAKEUP) や Google Photos 再起動 の タイミング で 端末 の
+    輝度 が 既定 に 戻る ことが ある ため 、 同期 運転 中 の UI 操作 ・ 復旧 ・ 待機
+    ループ の たび に 呼ん で 暗さ を 維持 する 。 未 減光 なら 何 も し ない
+    (同期 外 の prepare_ui 呼び出し で 意図 せ ず 画面 を 暗く しない ため)。
+
+    Re-apply the dim only while a dim is active (snapshot present). A screen wake
+    (KEYCODE_WAKEUP) or a Google Photos restart can reset the device brightness, so
+    this is called on every UI-prep / recovery / wait-loop tick to keep it dimmed.
+    Does nothing when no dim is active, so unrelated prepare_ui calls never darken
+    the screen by accident.
+    """
+    if not _BRIGHTNESS_SNAPSHOT["taken"]:
+        return False
+    return apply_night_brightness()
+
+
 def restore_brightness():
     """set_brightness で 変更 した 画面 輝度 を 元 の 値 へ 戻す 。
 
@@ -498,6 +517,14 @@ def prepare_ui():
     unlock()
     launch_photos()
     scroll_to_top()
+    # v1.13.4: wakeup / アプリ 再起動 で 輝度 が 既定 に 戻る の を 打ち消す
+    # (減光 中 の とき だけ 再適用)。 GP バックアップ 待機 中 の 復旧 パス を カバー。
+    # v1.13.4: counter the brightness reset caused by wakeup / app restart
+    # (only while a dim is active). Covers the GP backup wait recovery paths.
+    try:
+        reapply_night_brightness()
+    except Exception:
+        pass
 
 
 def try_close_tutorial():

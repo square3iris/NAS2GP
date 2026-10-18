@@ -125,6 +125,12 @@ removed desktop-GUI era is compressed).
 - **Delete-state reconciliation tool (v1.13.3)**: added "Reconcile delete state (repair DB/device mismatch)" on the device page. It detects files that exist on the device while the DB records them as `DONE` and re-queues them as `PENDING` (it does not delete any real file, only fixes the state). New API `POST /api/device/reconcile_delete` and DB methods `get_phone_delete_done_files()` / `mark_phone_delete_pending_bulk()`.
 - **Version bump (v1.13.3)**: `settings.APP_VERSION` changed from `1.13.2` to `1.13.3`.
 
+### v1.13.4 — Fix: screen brightness brightens again while waiting for the Google Photos backup
+
+- **Keep dimming during the wait (v1.13.4)**: fixed the device screen brightening again while NAS2GP waits for the Google Photos backup. During the wait, unreadable progress triggers repeated recovery (`prepare_ui()` = `KEYCODE_WAKEUP` + Photos restart, and the ADB reconnect last resort `KEYCODE_WAKEUP`); the brightness was reset to the default at those screen-wake / app-restart moments. Countermeasures: (1) re-apply the dim at the end of `prepare_ui()`, and (2) re-apply it on every wait-loop tick (default 8 s).
+- **Re-apply only while dimming is active (v1.13.4)**: the new helper `reapply_night_brightness()` acts only while a dim snapshot is held (i.e. dimmed for a sync run), so unrelated UI prep outside a run never darkens the screen by accident. Calling it repeatedly just re-sets the same value and is safe (the original values kept for restore are preserved).
+- **Version bump (v1.13.4)**: `settings.APP_VERSION` changed from `1.13.3` to `1.13.4`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.
