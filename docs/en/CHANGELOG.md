@@ -102,6 +102,14 @@ removed desktop-GUI era is compressed).
 - **Docs (v1.13.0)**: updated section 3.6 and the config sample in `docs/{ja,en}/SETTINGS.md`.
 - **Version bump (v1.13.0)**: `settings.APP_VERSION` changed from `1.12.0` to `1.13.0`.
 
+### v1.13.1 — Settings page cleanup (removing unused items and consolidating the analysis log)
+
+- **Removed unused settings (v1.13.1)**: removed 4 items that were shown on the Settings page but had no real effect: `ADB_TIMEOUT` (unused), `ADB_PUSH_RETRY` (actual retries are handled by `PUSH_INNER_RETRY`), `SCREEN_BRIGHTNESS_DEFAULT` (never referenced), and `CYCLE_GP_BEFORE_WAIT` (the GP cycle always runs, so ON/OFF had no effect). Existing keys in the config file are left untouched and harmless (only auto-filled from `config_loader` defaults).
+- **Consolidated analysis settings (v1.13.1)**: because the disconnect analysis log and the stats heartbeat both write the same `logs/health.jsonl`, they are merged into a single checkbox "Record analysis log (disconnect analysis + stats data)". Turning it OFF stops recording, so the stats time series stops updating too. The recording-interval field is enabled only while the checkbox is ON (dependent display via `depends_on`).
+- **Wording updated (v1.13.1)**: renamed the settings group to "Analysis log (disconnect analysis + stats data)" and noted that it also feeds the time-series graphs on the Stats page.
+- **Docs (v1.13.1)**: updated the config sample and sections 3.3 / 3.5 / 3.6 / 3.7, and 6.3 / 6.6 in `docs/{ja,en}/SETTINGS.md`.
+- **Version bump (v1.13.1)**: `settings.APP_VERSION` changed from `1.13.0` to `1.13.1`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.

@@ -77,6 +77,7 @@ function _makeCfgInput(it, val){
   _styleCfgInput(el);
   el.dataset.key = it.key;
   el.dataset.type = t;
+  if (it.depends_on) el.dataset.dependsOn = it.depends_on;
   const tip = it.desc || it.tooltip;
   if (tip) el.title = tip;
   return el;
@@ -92,6 +93,7 @@ async function loadEditor(){
     const box = document.getElementById('cfg-editor');
     box.innerHTML = '';
     let n = 0;
+    const byKey = {};
     for (const g of _cfgSchema){
       const h = document.createElement('div');
       h.className = 'cfg-group';
@@ -110,7 +112,9 @@ async function loadEditor(){
         lb.className = 'cfg-label';
         lb.textContent = it.label || it.key;
         item.appendChild(lb);
-        item.appendChild(_makeCfgInput(it, vals[it.key]));
+        const inp = _makeCfgInput(it, vals[it.key]);
+        byKey[it.key] = inp;
+        item.appendChild(inp);
         const tip = it.desc || it.tooltip;
         if (tip){
           const dd = document.createElement('div');
@@ -121,6 +125,21 @@ async function loadEditor(){
         box.appendChild(item);
         n++;
       }
+    }
+    // depends_on: マスター の チェック が OFF の とき 従属 項目 を 無効 化 する 。
+    // depends_on: disable dependent inputs while the master checkbox is OFF.
+    for (const k of Object.keys(byKey)){
+      const dep = byKey[k].dataset.dependsOn;
+      if (!dep) continue;
+      const master = byKey[dep];
+      if (!master) continue;
+      const apply = ()=>{
+        const on = !!master.checked;
+        byKey[k].disabled = !on;
+        byKey[k].style.opacity = on ? '' : '.45';
+      };
+      master.addEventListener('change', apply);
+      apply();
     }
     document.getElementById('cfg-msg').textContent = tf('web.settings.loaded', {n: n});
   } catch(e){ console.warn(e); document.getElementById('cfg-msg').textContent = tf('web.settings.load_fail', {err: e}); }

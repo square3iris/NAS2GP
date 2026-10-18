@@ -54,8 +54,6 @@ On first launch or when loading an older file, missing keys are auto-filled with
   "MAX_FILES_PER_BATCH": 30,
   "MAX_BYTES_PER_BATCH": 2147483648,
   "DEVICE_STORAGE_MARGIN_GB": 4.0,
-  "ADB_TIMEOUT": 60,
-  "ADB_PUSH_RETRY": 3,
   "ADB_RECOVER_MIN_INTERVAL_SEC": 45.0,
   "ADB_FAILURE_POLICY": "pause_dialog",
   "ADB_RECOVERY_WAIT_SEC": 300,
@@ -71,11 +69,9 @@ On first launch or when loading an older file, missing keys are auto-filled with
   "MIN_ACCEPT_ELAPSED_SECONDS": 15,
   "BACKUP_STALLED_LIMIT": 15,
   "RESTART_PHOTOS_AFTER_PUSH": false,
-  "CYCLE_GP_BEFORE_WAIT": true,
   "LOG_VERBOSITY": "standard",
   "ENABLE_NIGHT_LIGHT_MODE": true,
   "SCREEN_BRIGHTNESS_NIGHT": 0,
-  "SCREEN_BRIGHTNESS_DEFAULT": 150,
   "WEB_SERVER_HOST": "0.0.0.0",
   "WEB_SERVER_PORT": 8000
 }
@@ -124,8 +120,6 @@ and how to recover from a disconnect.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `ADB_TIMEOUT` | int | `60` | Per-command ADB timeout (seconds) |
-| `ADB_PUSH_RETRY` | int | `3` | Retry count on push failure |
 | `ADB_FAILURE_POLICY` | select | `pause_dialog` | Behavior on ADB failure: `pause_dialog` (pause) / `continue` (warn and continue anyway) |
 | `ADB_RECOVER_MIN_INTERVAL_SEC` | float | `45.0` | Minimum interval between automatic recovery runs (seconds) |
 | `ADB_RECOVERY_WAIT_SEC` | int | `300` | Max seconds to keep retrying reconnection before deciding "unrecoverable". On timeout, failed items revert to PENDING and the run stops safely |
@@ -158,7 +152,6 @@ finish uploading to the Google Photos cloud.
 | `BACKUP_CHECK_INTERVAL` | int | `8` | Interval to read on-screen text (UIAutomator dump) (seconds) |
 | `MIN_ACCEPT_ELAPSED_SECONDS` | int | `15` | Minimum elapsed time before completion can be accepted (seconds) |
 | `BACKUP_STALLED_LIMIT` | int | `15` | Stall-restart threshold (consecutive polls). If "backing up" persists for this many polls, Google Photos is restarted to recover (actual time depends on `BACKUP_CHECK_INTERVAL`; e.g. 15 polls x 8s ~ 120s). Relaxed automatically in proportion to the no-progress timeout for large files (`0` disables) |
-| `CYCLE_GP_BEFORE_WAIT` | bool | `true` | Restart Google Photos right after transfer so it detects new photos (Stop->Scan->Start before waiting) |
 | `RESTART_PHOTOS_AFTER_PUSH` | bool | `false` | Restart Google Photos only when a backup fails |
 
 ### 3.6 Device screen (brightness / night light)
@@ -171,18 +164,20 @@ backup detection and operations keep working even at brightness `0`.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `ENABLE_NIGHT_LIGHT_MODE` | bool | `true` | Use night-light mode |
-| `SCREEN_BRIGHTNESS_NIGHT` | int | `0` | Screen brightness during the sync run (0-255) |
-| `SCREEN_BRIGHTNESS_DEFAULT` | int | `150` | Normal screen brightness (0-255) |
+| `SCREEN_BRIGHTNESS_NIGHT` | int | `0` | Screen brightness during the sync run (0-255). Restored to the original level automatically when the run ends |
 
-### 3.7 Monitoring: disconnect analysis log
+### 3.7 Analysis log (disconnect analysis + stats data)
 
-Settings for the log that periodically records the device state during long transfers and helps
-analyze the cause of a disconnect.
+Settings for the log that periodically records the device state (level / temperature / free space)
+during long transfers. This record is used both to analyze disconnect causes (snapshots in
+`source/logs/disconnect_*.log`) and as the source data for the time-series graphs on the Stats page
+(battery / temperature / free space, in `source/logs/health.jsonl`). Turning it ON only when
+investigating or collecting data is enough.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `DISCONNECT_LOG_ENABLED` | bool | `true` | Enable the disconnect analysis log (periodic records + disconnect snapshot) |
-| `DISCONNECT_HEARTBEAT_INTERVAL_SEC` | int | `600` | Recording interval (seconds). Smaller records finer detail but increases adb calls |
+| `DISCONNECT_LOG_ENABLED` | bool | `true` | Record the analysis log (disconnect analysis + stats data). Turning it OFF stops recording, so the stats time series stops updating too |
+| `DISCONNECT_HEARTBEAT_INTERVAL_SEC` | int | `600` | Recording interval (seconds). Smaller records finer detail but increases adb calls. Effective only while the checkbox above is ON |
 
 ### 3.8 Log display
 
@@ -323,7 +318,7 @@ Each video round-trips through transfer -> backup -> delete, preventing device s
 
 ### 6.3 Unstable ADB
 
-Increase `ADB_PUSH_RETRY` and keep `ADB_FAILURE_POLICY = pause_dialog` to inspect the cause.
+Keep `ADB_FAILURE_POLICY = pause_dialog` to inspect the cause.
 If disconnects are frequent, a larger `ADB_RECOVERY_WAIT_SEC` (e.g. 600 = 10 min) improves the
 auto-recovery success rate.
 
@@ -350,7 +345,7 @@ settings provide automatic recovery and safe stop.
 > cannot recover it; physical charging and powering it back on are required. This software never
 > turns the device off (it only does screen-off and reboot).
 
-### 6.6 Analyzing the cause of a disconnect (disconnect analysis log)
+### 6.6 Analyzing the cause of a disconnect (analysis log)
 
 To diagnose a disconnect that happened during a long evaluation run, keep `DISCONNECT_LOG_ENABLED`
 enabled (the default). Because `source/logs/health.jsonl` keeps the battery trend, you can tell whether the
@@ -358,3 +353,7 @@ disconnect was a "gradual battery depletion" (level dropping step by step) or a 
 (plenty of charge left = cable / ADB failure) from the trend. A smaller
 `DISCONNECT_HEARTBEAT_INTERVAL_SEC` records finer detail, at the cost of more frequent recording
 (adb calls).
+
+> This analysis log also serves as the source data for the time-series graphs on the Stats page
+> (battery / temperature / free space). Turning it OFF stops the stats time series from updating,
+> so keep it ON whenever you use either analysis or stats.

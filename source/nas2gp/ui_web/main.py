@@ -518,10 +518,6 @@ def _settings_ui_schema() -> List[Dict[str, Any]]:
              "min": 0, "max": 10, "step": 0.5, "desc": tr("settings.tooltip.storage_margin_gb")},
         ]},
         {"title": tr("settings.group.adb"), "desc": tr("settings.group.adb.desc"), "items": [
-            {"key": "ADB_TIMEOUT", "label": tr("settings.label.adb_timeout"), "type": "int", "min": 1, "max": 3600,
-             "desc": tr("settings.tooltip.adb_timeout")},
-            {"key": "ADB_PUSH_RETRY", "label": tr("settings.label.adb_push_retry"), "type": "int", "min": 0, "max": 20,
-             "desc": tr("settings.tooltip.adb_push_retry")},
             {"key": "ADB_FAILURE_POLICY", "label": tr("settings.label.adb_failure_policy"), "type": "select",
              "choices": [
                  {"value": "pause_dialog", "label": tr("settings.choice.adb_policy.pause_dialog")},
@@ -553,8 +549,6 @@ def _settings_ui_schema() -> List[Dict[str, Any]]:
              "desc": tr("settings.tooltip.min_accept_elapsed")},
             {"key": "BACKUP_STALLED_LIMIT", "label": tr("settings.label.stalled_limit"), "type": "int", "min": 0, "max": 600,
              "desc": tr("settings.tooltip.stalled_limit")},
-            {"key": "CYCLE_GP_BEFORE_WAIT", "label": tr("settings.label.cycle_gp"), "type": "bool",
-             "desc": tr("settings.tooltip.cycle_gp")},
             {"key": "RESTART_PHOTOS_AFTER_PUSH", "label": tr("settings.label.restart_photos"), "type": "bool",
              "desc": tr("settings.tooltip.restart_photos")},
         ]},
@@ -563,14 +557,13 @@ def _settings_ui_schema() -> List[Dict[str, Any]]:
              "desc": tr("settings.tooltip.enable_night")},
             {"key": "SCREEN_BRIGHTNESS_NIGHT", "label": tr("settings.label.night_brightness"), "type": "int", "min": 0, "max": 255,
              "desc": tr("settings.tooltip.night_brightness")},
-            {"key": "SCREEN_BRIGHTNESS_DEFAULT", "label": tr("settings.label.default_brightness"), "type": "int", "min": 0, "max": 255,
-             "desc": tr("settings.tooltip.default_brightness")},
         ]},
         {"title": tr("settings.group.disconnect_log"), "desc": tr("settings.group.disconnect_log.desc"), "items": [
             {"key": "DISCONNECT_LOG_ENABLED", "label": tr("settings.label.disconnect_log_enabled"), "type": "bool",
              "desc": tr("settings.tooltip.disconnect_log_enabled")},
             {"key": "DISCONNECT_HEARTBEAT_INTERVAL_SEC", "label": tr("settings.label.disconnect_heartbeat_interval"), "type": "int",
-             "min": 30, "max": 86400, "desc": tr("settings.tooltip.disconnect_heartbeat_interval")},
+             "min": 30, "max": 86400, "desc": tr("settings.tooltip.disconnect_heartbeat_interval"),
+             "depends_on": "DISCONNECT_LOG_ENABLED"},
         ]},
         {"title": tr("settings.group.log"), "desc": tr("settings.group.log.desc"), "items": [
             {"key": "LOG_VERBOSITY", "label": tr("settings.label.log_verbosity"), "type": "select",

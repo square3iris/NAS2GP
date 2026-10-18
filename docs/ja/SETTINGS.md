@@ -54,8 +54,6 @@ NAS2GP/ (リポジトリルート)
   "MAX_FILES_PER_BATCH": 30,
   "MAX_BYTES_PER_BATCH": 2147483648,
   "DEVICE_STORAGE_MARGIN_GB": 4.0,
-  "ADB_TIMEOUT": 60,
-  "ADB_PUSH_RETRY": 3,
   "ADB_RECOVER_MIN_INTERVAL_SEC": 45.0,
   "ADB_FAILURE_POLICY": "pause_dialog",
   "ADB_RECOVERY_WAIT_SEC": 300,
@@ -71,11 +69,9 @@ NAS2GP/ (リポジトリルート)
   "MIN_ACCEPT_ELAPSED_SECONDS": 15,
   "BACKUP_STALLED_LIMIT": 15,
   "RESTART_PHOTOS_AFTER_PUSH": false,
-  "CYCLE_GP_BEFORE_WAIT": true,
   "LOG_VERBOSITY": "standard",
   "ENABLE_NIGHT_LIGHT_MODE": true,
   "SCREEN_BRIGHTNESS_NIGHT": 0,
-  "SCREEN_BRIGHTNESS_DEFAULT": 150,
   "WEB_SERVER_HOST": "0.0.0.0",
   "WEB_SERVER_PORT": 8000
 }
@@ -124,8 +120,6 @@ NAS2GP/ (リポジトリルート)
 
 | キー | 型 | 既定 | 内容 |
 |---|---|---|---|
-| `ADB_TIMEOUT` | int | `60` | ADB コマンドの 1 回あたりタイムアウト (秒) |
-| `ADB_PUSH_RETRY` | int | `3` | push 失敗時のリトライ回数 |
 | `ADB_FAILURE_POLICY` | select | `pause_dialog` | ADB 障害時の挙動: `pause_dialog` (一時停止) / `continue` (警告を出してそのまま続行) |
 | `ADB_RECOVER_MIN_INTERVAL_SEC` | float | `45.0` | 自動復旧 (recover) の最小実行間隔 (秒) |
 | `ADB_RECOVERY_WAIT_SEC` | int | `300` | 切断検知後に「復旧不能」と判定するまで再接続を粘る上限 (秒)。超過時は失敗分を PENDING に戻して安全停止 |
@@ -157,7 +151,6 @@ NAS2GP/ (リポジトリルート)
 | `BACKUP_CHECK_INTERVAL` | int | `8` | 画面文言 (UIAutomator dump) を確認する間隔 (秒) |
 | `MIN_ACCEPT_ELAPSED_SECONDS` | int | `15` | 完了受理に必要な最低経過時間 (秒) |
 | `BACKUP_STALLED_LIMIT` | int | `15` | 停滞リスタートの判定回数。「バックアップ中」が監視ループでこの回数だけ連続したら Google Photos を再起動して立て直す (実時間は `BACKUP_CHECK_INTERVAL` に依存。例: 15回 × 8秒 ≒ 120秒)。大容量ファイルでは無進捗タイムアウトに比例して自動で緩和される (`0` で無効) |
-| `CYCLE_GP_BEFORE_WAIT` | bool | `true` | 転送直後に Google Photos を再起動して新規写真を認識させる (待機前の Stop→Scan→Start) |
 | `RESTART_PHOTOS_AFTER_PUSH` | bool | `false` | バックアップ失敗時のみ Google フォトを再起動する |
 
 ### 3.6 端末の画面 (明るさ / 常夜灯)
@@ -170,17 +163,19 @@ NAS2GP/ (リポジトリルート)
 | キー | 型 | 既定 | 内容 |
 |---|---|---|---|
 | `ENABLE_NIGHT_LIGHT_MODE` | bool | `true` | 常夜灯モードを使う |
-| `SCREEN_BRIGHTNESS_NIGHT` | int | `0` | 同期運転中の画面輝度 (0–255) |
-| `SCREEN_BRIGHTNESS_DEFAULT` | int | `150` | 通常時の画面輝度 (0–255) |
+| `SCREEN_BRIGHTNESS_NIGHT` | int | `0` | 同期運転中の画面輝度 (0–255)。運転終了時に元の輝度へ自動復元 |
 
-### 3.7 モニタリング: 切断解析ログ
+### 3.7 解析ログ (切断解析 と 統計データ)
 
-長時間の転送中に端末の状態を定期記録し、切断原因の解析に使うログの設定です。
+長時間の転送中に端末の状態 (残量 / 温度 / 空き容量) を定期記録するログの設定です。
+この記録は切断原因の解析 (`source/logs/disconnect_*.log` のスナップショット) に使われるほか、
+統計ページの時系列グラフ (電池 / 温度 / 空き容量) の元データ (`source/logs/health.jsonl`) にも
+なります。原因調査やデータ収集のときだけ ON にすれば十分です。
 
 | キー | 型 | 既定 | 内容 |
 |---|---|---|---|
-| `DISCONNECT_LOG_ENABLED` | bool | `true` | 切断解析ログ (定期記録 + 切断スナップショット) を有効化 |
-| `DISCONNECT_HEARTBEAT_INTERVAL_SEC` | int | `600` | 状態を記録する間隔 (秒)。短くすると細かく残るが ADB 呼び出しが増える |
+| `DISCONNECT_LOG_ENABLED` | bool | `true` | 解析ログを記録する (切断解析 + 統計データ)。OFF にすると記録を停止し、統計の時系列も更新されなくなる |
+| `DISCONNECT_HEARTBEAT_INTERVAL_SEC` | int | `600` | 状態を記録する間隔 (秒)。短くすると細かく残るが ADB 呼び出しが増える。上のチェックが ON のときだけ有効 |
 
 ### 3.8 ログ表示
 
@@ -320,7 +315,7 @@ python db_admin.py --help
 
 ### 6.3 ADB 通信が不安定
 
-`ADB_PUSH_RETRY` を増やし、`ADB_FAILURE_POLICY` は `pause_dialog` のままにして原因を確認します。
+`ADB_FAILURE_POLICY` は `pause_dialog` のままにして原因を確認します。
 切断が頻発する場合は `ADB_RECOVERY_WAIT_SEC` を長め (例 600 = 10 分) にすると自動復旧の成功率が上がります。
 
 ### 6.4 バックアップ完了判定の調整
@@ -345,10 +340,13 @@ python db_admin.py --help
 > なった場合は ADB では復旧できないため、物理的な充電と電源 ON が必要です。本ソフトが
 > 端末の電源を切る処理を行うことはありません (画面 OFF と再起動のみ)。
 
-### 6.6 切断原因の解析 (切断解析ログ)
+### 6.6 切断原因の解析 (解析ログ)
 
 長時間評価で切断が起きたときの原因を後から切り分けるには、`DISCONNECT_LOG_ENABLED` を
 有効 (既定) にしておきます。`source/logs/health.jsonl` に残量推移が残るため、切断が「緩やかな
 電池切れ (残量が段階的に低下)」なのか「突発的切断 (残量は十分) = ケーブル / ADB 異常」なのかを
 傾向で判別できます。`DISCONNECT_HEARTBEAT_INTERVAL_SEC` を短くすると推移が細かく残りますが、
 その分だけ記録 (adb 呼び出し) の頻度が上がります。
+
+> この解析ログは、統計ページの時系列グラフ (電池 / 温度 / 空き容量) の元データも兼ねています。
+> OFF にすると統計の時系列も更新されなくなるため、解析・統計のどちらかを使うときは ON にしてください。
