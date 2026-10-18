@@ -1,0 +1,5 @@
+# GitHub のリポジトリに表示される「Sponsor」ボタンの支援先。
+# ここに PayPal.Me を指定すると、外部プラットフォームとして扱われる。
+# Funding targets shown on the repository "Sponsor" button.
+# Listing a PayPal.Me link here exposes it as a custom funding URL.
+custom: ["https://paypal.me/square3iris"]

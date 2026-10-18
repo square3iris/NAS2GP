@@ -770,6 +770,7 @@ def create_app() -> FastAPI:
         ("/management", "management.html", "management", "web.nav.management"),
         ("/stats", "stats.html", "stats", "web.nav.stats"),
         ("/diagnostics", "diagnostics.html", "diagnostics", "web.nav.diagnostics"),
+        ("/help", "help.html", "help", "web.nav.help"),
     ]
 
     def _make_page_handler(template_name: str, active: str, title_key: str):

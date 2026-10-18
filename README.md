@@ -151,6 +151,16 @@ NAS2GP/
 - 長時間運用時の切断・電池切れなどへの自動復旧を実装していますが、完全ではありません。復旧できない場合は安全に停止する挙動をとります。
 - 既知の不具合は GitHub のリポジトリ内の `docs/ja/CHANGELOG.md` および `docs/ja/ROADMAP_AND_TODO.md` に随時記載します（配布ZIPには含まれません）。
 
+### 開発を支援
+
+NAS2GP は無料で公開しているフリーツールです。気に入っていただけたら、開発の継続や動作検証用の機材のためにご支援いただけると励みになります。
+
+[![Support via PayPal](https://img.shields.io/badge/PayPal-%E6%94%AF%E6%8F%B4%E3%81%99%E3%82%8B-0070ba?logo=paypal&logoColor=white)](https://paypal.me/square3iris)
+
+- PayPal: <https://paypal.me/square3iris>
+
+支援は任意です。支援の有無で機能が制限されることはありません。
+
 ### ライセンス
 
 MIT License（`LICENSE` を参照）。
@@ -297,6 +307,16 @@ NAS2GP/
 - The "backup complete" detection relies on the Google Photos screen (UI dump), so a Google Photos UI change may break the detection.
 - Automatic recovery from disconnects / battery depletion during long runs is implemented, but it is not perfect; when recovery is not possible the tool stops safely.
 - Known issues are recorded in `docs/en/CHANGELOG.md` and `docs/en/ROADMAP_AND_TODO.md` in the GitHub repository (they are not included in the distribution ZIP).
+
+### Support development
+
+NAS2GP is free software. If you find it useful, your support helps cover continued development and test devices for verification.
+
+[![Support via PayPal](https://img.shields.io/badge/PayPal-Support-0070ba?logo=paypal&logoColor=white)](https://paypal.me/square3iris)
+
+- PayPal: <https://paypal.me/square3iris>
+
+Donations are optional and never limit any features.
 
 ### License
 

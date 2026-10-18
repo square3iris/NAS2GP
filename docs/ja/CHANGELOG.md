@@ -149,6 +149,16 @@
 - **ドキュメント (v1.13.6)**: `docs/{ja,en}/ARCHITECTURE.md` の `delete_uploaded` 記述 を 更新。
 - **バージョン更新 (v1.13.6)**: `settings.APP_VERSION` を `1.13.5` → `1.13.6` に 変更。
 
+### v1.13.7 — ヘルプタブと開発支援（寄付）導線を追加
+
+- **ヘルプタブ (v1.13.7)**: ナビに「🆘 ヘルプ」(`/help`) を追加。概要 / 使い方の要点 / 注意・免責 / サポート方針 / 開発を支援 を 1 ページにまとめた (新テンプレート `help.html`)。
+- **開発を支援（寄付）導線 (v1.13.7)**: ヘルプページに PayPal.Me (`paypal.me/square3iris`) へのリンクと QR コードを掲載。QR は生成済みの静的 SVG を埋め込むため、実行時に外部通信・追加ライブラリは不要。
+- **ホーム画面の支援リンク (v1.13.7)**: ホーム画面下部に「☕ 開発を支援」の小さなリンクを追加し、ヘルプページの寄付欄へ誘導。
+- **GitHub 側 (v1.13.7)**: `.github/FUNDING.yml` を追加し、リポジトリに「Sponsor」ボタンを表示。README に「開発を支援 / Support development」節を追加。
+- **i18n (v1.13.7)**: `web.nav.help` / `web.home.thanks` / `web.home.support_link` / `web.help.*` を ja/en に追加。
+- **ドキュメント (v1.13.7)**: `docs/{ja,en}/ARCHITECTURE.md` のページ一覧に `/help` を追加。
+- **バージョン更新 (v1.13.7)**: `settings.APP_VERSION` を `1.13.6` → `1.13.7` に 変更。
+
 ### v1.9.0 — macOS / Linux 対応 (ベストエフォート)
 
 - **macOS / Linux 対応 (v1.9.0)**: これ まで Windows 専用 だっ た 構成 を macOS / Linux で も 起動 ・ 実行 でき る よう に し た (ベストエフォート)。実機 の macOS で の 動作 確認 は 未 実施。

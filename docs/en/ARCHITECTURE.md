@@ -184,6 +184,7 @@ to avoid contention with the writer process.
 | `/management` | `management.html` | Management: file list (independent per-column filters + paging) + 3 OPEN + 3 RESET (OLD rename + multi-step confirm) |
 | `/stats` | `stats.html` | Stats (analysis only): range switch (24h / 7d / 30d) + time-series graphs (volume, count, speed, battery, temperature) |
 | `/diagnostics` | `diagnostics.html` | Diagnostics: device info / DB state / language integrity / bug report ZIP |
+| `/help` | `help.html` | Help: overview / quick start / cautions & disclaimer / support policy / support development (PayPal + QR) |
 
 ### 5.2 Backend -> Frontend Propagation
 

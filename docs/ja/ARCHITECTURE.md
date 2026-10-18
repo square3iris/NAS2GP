@@ -183,6 +183,7 @@ S2: 端末 再起動 (reboot_device, 再起動後 待機 45 秒)
 | `/management` | `management.html` | 管理: ファイル一覧 (列独立フィルタ + ページング) + 3 OPEN + 3 RESET (OLD rename + 多段確認) |
 | `/stats` | `stats.html` | 統計 (分析専用): 期間切替 (24 時間 / 7 日 / 30 日) + 時系列グラフ (転送量・件数・速度・電池・温度) |
 | `/diagnostics` | `diagnostics.html` | 診断: デバイス情報 / DB 状態 / 言語整合性 / バグレポート ZIP |
+| `/help` | `help.html` | ヘルプ: 概要 / 使い方の要点 / 注意・免責 / サポート方針 / 開発を支援 (PayPal + QR) |
 
 ### 5.2 バックエンド → フロントエンド伝播
 

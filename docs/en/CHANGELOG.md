@@ -150,6 +150,16 @@ removed desktop-GUI era is compressed).
 - **Docs (v1.13.6)**: updated the `delete_uploaded` description in `docs/{ja,en}/ARCHITECTURE.md`.
 - **Version bump (v1.13.6)**: `settings.APP_VERSION` changed from `1.13.5` to `1.13.6`.
 
+### v1.13.7 — Help tab and a support (donation) funnel
+
+- **Help tab (v1.13.7)**: added "🆘 Help" (`/help`) to the nav. It gathers the overview / quick start / cautions & disclaimer / support policy / support development into one page (new `help.html` template).
+- **Support (donation) funnel (v1.13.7)**: the Help page shows a link to PayPal.Me (`paypal.me/square3iris`) and a QR code. The QR is an embedded static SVG, so no external request or extra library is needed at runtime.
+- **Home support link (v1.13.7)**: added a small "☕ Support development" link at the bottom of the Home page that leads to the donation section on the Help page.
+- **GitHub side (v1.13.7)**: added `.github/FUNDING.yml` to show a "Sponsor" button on the repository, and a "Support development" section in the README.
+- **i18n (v1.13.7)**: added `web.nav.help` / `web.home.thanks` / `web.home.support_link` / `web.help.*` to ja/en.
+- **Docs (v1.13.7)**: added `/help` to the page list in `docs/{ja,en}/ARCHITECTURE.md`.
+- **Version bump (v1.13.7)**: `settings.APP_VERSION` changed from `1.13.6` to `1.13.7`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.
