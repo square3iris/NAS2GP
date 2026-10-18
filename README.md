@@ -41,7 +41,28 @@ Google Photos の無制限アップロードの条件は Google のポリシー�
 | 障害時の自動復旧 | 電池残量低下・ADB 切断を検知し、段階的に復旧。復旧不能なら安全に停止 |
 | 切断解析ログ | 一定間隔で電池 / 温度 / 空き容量を記録し、切断時のスナップショットを保存 |
 | Web UI | 進捗 / 統計（時系列グラフ） / 管理（ファイル一覧） / 設定 / 診断 |
-| 多言語 | 日本語 / English |
+| 多言語 | 日本語 / English ＋ JSON を1つ置くだけで任意の言語を追加 |
+
+### 多言語対応（言語を追加できます）
+
+日本語 / English に加えて、**JSON ファイルを1つ置くだけで好きな言語を追加**できます。Web UI もログも切り替わります。
+
+1. `source/config/lang/de.json` のような JSON を作成します（**ファイル名がそのまま言語コード**になります）。
+
+```json
+{
+  "label": "Deutsch (DE)",
+  "words": {
+    "web.btn.start": "Starten",
+    "web.btn.stop": "Anhalten",
+    "web.nav.settings": "Einstellungen"
+  }
+}
+```
+
+2. 起動時に自動検出され、設定ページの言語ドロップダウンに **Deutsch (DE)** が現れます。選択して保存すると UI 全体が切り替わります。
+3. **部分翻訳で OK**。書かなかったキーは組み込みの English / 日本語がそのまま使われるため、UI が崩れることはありません。
+4. 不足しているキーは 診断 ページの「言語整合性」で確認できます。
 
 ### 動作環境
 
@@ -103,12 +124,16 @@ NAS2GP/
     ├ entry_web.py / app.py / db_admin.py
     ├ nas2gp/   本体パッケージ
     ├ bin/      起動用 .cmd / .sh / .command
-    ├ config/   設定ファイル（個人環境の設定。Git 管理外）
+    ├ config/   設定ファイル + config/lang/ 外部言語 JSON（個人環境。Git 管理外）
     ├ database/ 転送履歴データベース（Git 管理外）
     └ logs/     実行ログ（Git 管理外）
 ```
 
-### 注意事項
+### 注意事項（必ずお読みください）
+
+> [!CAUTION]
+> **操作を間違えると、端末側の写真フォルダからデータが削除されます。**
+> 必ずバックアップを取得してから実行してください。ご利用は**自己責任**でお願いします。
 
 - 端末の個人データを扱います。**初回はテスト用の写真で動作を確認**してから本番運用してください。
 - `database/` と `logs/`、`config/config_ui.json` には個人情報（ファイルパス・履歴）が含まれるため、Git にはコミットされません。
@@ -160,7 +185,28 @@ The conditions for Google Photos unlimited upload may change with Google's polic
 | Automatic recovery | Detects low battery / ADB disconnects and recovers step by step; stops safely if it cannot |
 | Disconnect analysis log | Periodically records battery / temperature / free space and snapshots the state on a disconnect |
 | Web UI | Progress / statistics (time-series charts) / management (file list) / settings / diagnostics |
-| Languages | Japanese / English |
+| Languages | Japanese / English, plus any language you add with a single JSON file |
+
+### Languages (you can add your own)
+
+Beyond Japanese / English, you can **add any language by dropping in a single JSON file**. It switches both the Web UI and the logs.
+
+1. Create a JSON such as `source/config/lang/de.json` (the **file name is the language code**).
+
+```json
+{
+  "label": "Deutsch (DE)",
+  "words": {
+    "web.btn.start": "Starten",
+    "web.btn.stop": "Anhalten",
+    "web.nav.settings": "Einstellungen"
+  }
+}
+```
+
+2. It is auto-detected at startup and **Deutsch (DE)** appears in the Settings language dropdown. Selecting and saving switches the whole UI.
+3. **Partial translation is fine.** Keys you do not provide fall back to the built-in English / Japanese, so the UI never breaks.
+4. Missing keys are listed on the Diagnostics page ("language integrity").
 
 ### Requirements
 
@@ -222,12 +268,16 @@ NAS2GP/
     ├ entry_web.py / app.py / db_admin.py
     ├ nas2gp/   main package
     ├ bin/      launcher .cmd / .sh / .command files
-    ├ config/   settings (per-environment; not committed)
+    ├ config/   settings + config/lang/ external language JSON (per-environment; not committed)
     ├ database/ transfer history database (not committed)
     └ logs/     runtime logs (not committed)
 ```
 
-### Notes
+### Notes (please read first)
+
+> [!CAUTION]
+> **Misoperation can delete data from the photo folder on your device.**
+> Always take a backup before running. Use at your own risk.
 
 - This tool handles your personal media. **Test with sample photos first** before real use.
 - `database/`, `logs/` and `config/config_ui.json` can contain personal information (file paths, history) and are not committed to Git.
