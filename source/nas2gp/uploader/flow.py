@@ -198,6 +198,14 @@ class Uploader:
                 ))
             except Exception:
                 ok = False
+            # 再接続 / 端末 再起動 で 画面 輝度 が 既定 に 戻る 場合 が ある ため 再適用
+            # Re-apply dimming: a reconnect / device reboot may have reset brightness.
+            if ok:
+                try:
+                    from nas2gp.device.ui import apply_night_brightness
+                    apply_night_brightness()
+                except Exception:
+                    pass
             return ok
 
         # ====================================================================

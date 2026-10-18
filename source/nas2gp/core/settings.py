@@ -13,7 +13,7 @@ import os as _os
 # 更新 する とき は この 1 箇所 だけ を 変更 し て ください 。
 # Product version: the single source of truth referenced by the Web UI, OpenAPI (/docs)
 # and diagnostics. When releasing, update only this one place.
-APP_VERSION = "1.12.0"
+APP_VERSION = "1.13.0"
 
 # --------------------------------------------
 # Work Root (v1.7.4 追加: 診断 / リセット など の 「DB ファイル 相対パス 解決」 を 共通化)
@@ -122,7 +122,7 @@ ADB_RECONNECT_INTERVAL = 60
 # --------------------------------------------
 
 ENABLE_NIGHT_LIGHT_MODE = True
-SCREEN_BRIGHTNESS_NIGHT = 1
+SCREEN_BRIGHTNESS_NIGHT = 0
 SCREEN_BRIGHTNESS_DEFAULT = 80
 SCREEN_OFF_TIMEOUT_MAX = 2147483647
 

@@ -79,6 +79,18 @@ class Sync:
 
     def upload_all(self):
 
+        # 同期運転中 は 端末 画面 を 減光 (常夜灯モード / 省電力 ・ 焼き付き 防止)。
+        # 未接続 や 失敗 は 無視 し 、 本体 処理 を 止め ない 。
+        # Dim the device screen during the run (night light mode). Failures ignored.
+        try:
+            from nas2gp.device.ui import apply_night_brightness
+            from nas2gp.core.logger import Logger as _NBLog
+            if apply_night_brightness():
+                _NBLog.info(tr("log.flow.night_brightness_on").format(
+                    v=int(getattr(_core_settings, "SCREEN_BRIGHTNESS_NIGHT", 0) or 0)))
+        except Exception:
+            pass
+
         try:
             smb_session_keep_alive(str(PHOTO_DIR))
 
@@ -112,6 +124,13 @@ class Sync:
         finally:
             try:
                 self.db.close()
+            except Exception:
+                pass
+            # 終了時 に 画面 輝度 を 元 の 値 へ 復元
+            # Restore the original screen brightness at the end of the run.
+            try:
+                from nas2gp.device.ui import restore_brightness
+                restore_brightness()
             except Exception:
                 pass
 

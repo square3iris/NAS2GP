@@ -74,7 +74,7 @@ NAS2GP/ (リポジトリルート)
   "CYCLE_GP_BEFORE_WAIT": true,
   "LOG_VERBOSITY": "standard",
   "ENABLE_NIGHT_LIGHT_MODE": true,
-  "SCREEN_BRIGHTNESS_NIGHT": 10,
+  "SCREEN_BRIGHTNESS_NIGHT": 0,
   "SCREEN_BRIGHTNESS_DEFAULT": 150,
   "WEB_SERVER_HOST": "0.0.0.0",
   "WEB_SERVER_PORT": 8000
@@ -163,12 +163,14 @@ NAS2GP/ (リポジトリルート)
 ### 3.6 端末の画面 (明るさ / 常夜灯)
 
 同期中に 端末 の画面を暗くして、眩しさや画面の焼き付きを防ぐ設定です。
-バックアップ待機中は常夜灯モードになります。
+同期の実行中は常夜灯モードになり、運転終了時に元の輝度へ戻します。
+画面輝度はスクリーンショット取得 (OCR) やタップ操作とは独立しているため、
+輝度 `0` でもバックアップ判定や操作は通常どおり動作します。
 
 | キー | 型 | 既定 | 内容 |
 |---|---|---|---|
 | `ENABLE_NIGHT_LIGHT_MODE` | bool | `true` | 常夜灯モードを使う |
-| `SCREEN_BRIGHTNESS_NIGHT` | int | `10` | 常夜灯モード時の画面輝度 (0–255) |
+| `SCREEN_BRIGHTNESS_NIGHT` | int | `0` | 同期運転中の画面輝度 (0–255) |
 | `SCREEN_BRIGHTNESS_DEFAULT` | int | `150` | 通常時の画面輝度 (0–255) |
 
 ### 3.7 モニタリング: 切断解析ログ

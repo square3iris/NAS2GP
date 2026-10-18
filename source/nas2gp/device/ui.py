@@ -251,7 +251,130 @@ def screen_off():
         pass
 
 
+# ============================================
+# 画面輝度 制御 (常夜灯モード 実装)
+# Screen brightness control (Night Light Mode implementation)
+#   同期運転中 は 画面 を 減光 し 、 終了時 に 元 の 値 へ 戻す 。
+#   Dim the screen during a sync run and restore the original value at the end.
+#
+#   輝度 と 画面 取得 (screencap) / UI dump は 独立 な ため 、 輝度0 でも
+#   OCR や タップ 操作 は 通常 どおり 動作 する (バックライト のみ が 暗く なる)。
+#   Brightness is independent of screencap / UI dump, so OCR and input keep
+#   working at brightness 0 (only the backlight gets darker).
+# ============================================
+
+# 元 の 輝度 / 自動輝度モード の 保持 (初回 set_brightness で 取得)。 復元 後 は 破棄 。
+# Holds the original brightness / auto-mode (captured on the first set_brightness).
+_BRIGHTNESS_SNAPSHOT = {"taken": False, "value": None, "mode": None}
+
+
+def _get_system_setting(name):
+    """`settings get system <name>` の 出力 を 返す (取得 失敗 は None)。
+
+    Return the output of `settings get system <name>` (None on failure).
+    """
+    try:
+        r = _run("shell", "settings", "get", "system", name)
+        out = (r.stdout or "").strip()
+        return out or None
+    except Exception:
+        return None
+
+
+def set_brightness(value):
+    """端末 画面 輝度 を value (0-255) に 設定 する 。
+
+      - 初回 のみ 元 の screen_brightness / screen_brightness_mode を 保存 。
+      - 自動輝度 は 指定値 を 上書き する ため screen_brightness_mode=0 (手動) に する 。
+    戻り値: 成功 True / 失敗 (未接続 含む) False。 例外 は 内部 で 潰す 。
+
+    Set the device screen brightness to value (0-255). On the first call the
+    original screen_brightness / screen_brightness_mode are saved. Auto-brightness
+    is switched to manual (mode=0) so the value is not overridden.
+    Returns True on success, False on failure (including no device); never raises.
+    """
+    try:
+        from nas2gp.device.adb import ADB as _ADB_BR
+        if not _ADB_BR.has_device():
+            return False
+    except Exception:
+        return False
+    try:
+        if not _BRIGHTNESS_SNAPSHOT["taken"]:
+            _BRIGHTNESS_SNAPSHOT["value"] = _get_system_setting("screen_brightness")
+            _BRIGHTNESS_SNAPSHOT["mode"] = _get_system_setting("screen_brightness_mode")
+            _BRIGHTNESS_SNAPSHOT["taken"] = True
+        v = int(value)
+        # mode=0 (手動) と 輝度 設定 を 1 コマンド に まとめ 、 ADB 呼び出し を 1 回 に 抑える
+        # Combine mode=0 (manual) and the brightness value into a single ADB call.
+        cmd = (f"settings put system screen_brightness_mode 0; "
+               f"settings put system screen_brightness {v}")
+        return bool(adb("shell", cmd, label=f"set_brightness({v})", print_on_console=False))
+    except Exception:
+        return False
+
+
+def apply_night_brightness():
+    """設定 に 従い 端末 画面 を 減光 する (ENABLE_NIGHT_LIGHT_MODE=True 時 のみ)。
+
+    無効 / 失敗 は False を 返し 、 呼び出し側 の 本体 処理 を 止め ない 。
+
+    Dim the device screen per settings (only when ENABLE_NIGHT_LIGHT_MODE is True).
+    Returns False when disabled/failed; never raises.
+    """
+    try:
+        from nas2gp.core import settings as _s
+        if not bool(getattr(_s, "ENABLE_NIGHT_LIGHT_MODE", False)):
+            return False
+        return set_brightness(int(getattr(_s, "SCREEN_BRIGHTNESS_NIGHT", 0) or 0))
+    except Exception:
+        return False
+
+
+def restore_brightness():
+    """set_brightness で 変更 した 画面 輝度 を 元 の 値 へ 戻す 。
+
+    未変更 (set_brightness 未実行) なら 何 も せ ず False。 未接続 で も 安全 に 無視 。
+    復元 後 は 保存値 を 破棄 する (次回 の 減光 で 再取得 する ため)。
+
+    Restore the brightness changed by set_brightness. Does nothing when unchanged.
+    Safe with no device connected; clears the snapshot so the next dim re-captures.
+    """
+    if not _BRIGHTNESS_SNAPSHOT["taken"]:
+        return False
+    try:
+        from nas2gp.device.adb import ADB as _ADB_BR
+        if not _ADB_BR.has_device():
+            return False
+    except Exception:
+        return False
+
+    def _num(x):
+        try:
+            return int(str(x).strip())
+        except Exception:
+            return None
+
+    try:
+        mv, vv = _num(_BRIGHTNESS_SNAPSHOT["mode"]), _num(_BRIGHTNESS_SNAPSHOT["value"])
+        parts = []
+        if mv is not None and mv >= 0:
+            parts.append(f"settings put system screen_brightness_mode {mv}")
+        if vv is not None and vv >= 0:
+            parts.append(f"settings put system screen_brightness {vv}")
+        if parts:
+            adb("shell", "; ".join(parts), label="restore_brightness", print_on_console=False)
+        _BRIGHTNESS_SNAPSHOT.update({"taken": False, "value": None, "mode": None})
+        return True
+    except Exception:
+        return False
+
+
 atexit.register(screen_off)
+# atexit は LIFO 実行のため 、 後 に 登録 し た restore_brightness が 先 に 走る
+# (輝度 を 戻し て から 画面 を 消灯)。
+# atexit runs LIFO: registering restore_brightness after screen_off makes it run first.
+atexit.register(restore_brightness)
 
 
 def unlock():

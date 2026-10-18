@@ -91,6 +91,17 @@ removed desktop-GUI era is compressed).
 - **Known limitation (v1.12.0)**: battery / temperature / free space are recorded only while syncing, so the charts have gaps for stopped periods (volume / speed remain in `batch_history` and cover past data).
 - **Version bump (v1.12.0)**: `settings.APP_VERSION` changed from `1.11.3` to `1.12.0`.
 
+### v1.13.0 — Screen dimming during the sync run (implementing Night Light Mode)
+
+- **Screen dimming during sync (v1.13.0)**: implemented the "Night Light Mode" that previously had only settings/UI but no device-side effect. During a sync run the device brightness is lowered to `SCREEN_BRIGHTNESS_NIGHT` (default `0`), and the original brightness is automatically restored when the run ends (disable via `ENABLE_NIGHT_LIGHT_MODE`).
+- **How the brightness is changed (v1.13.0)**: switch to `screen_brightness_mode=0` (manual) before setting `screen_brightness` (avoids being overridden by auto-brightness). The original values are saved and restored at the end / on abnormal exit (atexit).
+- **No impact on ADB capture (v1.13.0)**: brightness is independent of screenshots (`screencap`), UIAutomator dumps and `input` events, so OCR-based backup detection and taps keep working at brightness `0` (only the backlight dims; the display stays ON).
+- **Re-applied after reconnect (v1.13.0)**: because an ADB reconnect / device reboot can reset brightness, dimming is re-applied after each phase's ADB recovery.
+- **Default value unified (v1.13.0)**: `SCREEN_BRIGHTNESS_NIGHT` defaulted inconsistently (`1` in `settings.py` vs `10` in `config_loader.py`); both are now `0`.
+- **Related i18n / wording (v1.13.0)**: added `log.flow.night_brightness_on` to `lang/ja.py` / `lang/en.py`, and updated the settings descriptions (night group / enable / brightness) to match the "during sync run" behavior.
+- **Docs (v1.13.0)**: updated section 3.6 and the config sample in `docs/{ja,en}/SETTINGS.md`.
+- **Version bump (v1.13.0)**: `settings.APP_VERSION` changed from `1.12.0` to `1.13.0`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.

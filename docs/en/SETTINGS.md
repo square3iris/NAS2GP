@@ -74,7 +74,7 @@ On first launch or when loading an older file, missing keys are auto-filled with
   "CYCLE_GP_BEFORE_WAIT": true,
   "LOG_VERBOSITY": "standard",
   "ENABLE_NIGHT_LIGHT_MODE": true,
-  "SCREEN_BRIGHTNESS_NIGHT": 10,
+  "SCREEN_BRIGHTNESS_NIGHT": 0,
   "SCREEN_BRIGHTNESS_DEFAULT": 150,
   "WEB_SERVER_HOST": "0.0.0.0",
   "WEB_SERVER_PORT": 8000
@@ -164,12 +164,14 @@ finish uploading to the Google Photos cloud.
 ### 3.6 Device screen (brightness / night light)
 
 Settings that dim the device screen during sync to reduce glare and screen burn-in.
-It enters night-light mode while waiting for backup.
+It enters night-light mode during the whole sync run and restores the original brightness when the run ends.
+Screen brightness is independent of screenshot capture (OCR) and input, so OCR-based
+backup detection and operations keep working even at brightness `0`.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `ENABLE_NIGHT_LIGHT_MODE` | bool | `true` | Use night-light mode |
-| `SCREEN_BRIGHTNESS_NIGHT` | int | `10` | Screen brightness in night-light mode (0-255) |
+| `SCREEN_BRIGHTNESS_NIGHT` | int | `0` | Screen brightness during the sync run (0-255) |
 | `SCREEN_BRIGHTNESS_DEFAULT` | int | `150` | Normal screen brightness (0-255) |
 
 ### 3.7 Monitoring: disconnect analysis log
