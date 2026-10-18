@@ -47,6 +47,10 @@ bak/
 *.tar.gz
 *.7z
 
+# ---------- Release snapshots ----------
+# archive/ 配下 の 版ごと zip は commit する (個人データ は 含め ない)
+!archive/*.zip
+
 # ---------- macOS / Windows ----------
 .DS_Store
 Thumbs.db

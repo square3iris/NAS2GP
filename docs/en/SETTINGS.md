@@ -18,7 +18,7 @@ NAS2GP/ (repository root)
 ├── .gitignore
 ├── docs/                  <- documentation (ja / en)
 ├── archive/
-│   └── v1.8.0/            <- snapshot of the released version
+│   └── NAS2GP_v1.8.0.zip  <- snapshot of the released version
 └── source/                <- entry points, package and runtime data
     ├── app.py / entry_web.py / db_admin.py   <- entry points
     ├── nas2gp/            <- main package

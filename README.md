@@ -162,7 +162,7 @@ NAS2GP/
 ├ README.md
 ├ LICENSE
 ├ docs/        ja / en documentation
-├ archive/     release snapshots
+├ archive/     release snapshots (one zip per version)
 └ source/      entry points, main package and runtime data
     ├ entry_web.py / app.py / db_admin.py
     ├ nas2gp/   main package

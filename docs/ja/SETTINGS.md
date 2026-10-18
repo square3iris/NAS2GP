@@ -18,7 +18,7 @@ NAS2GP/ (リポジトリルート)
 ├── .gitignore
 ├── docs/                  ← ドキュメント (ja / en)
 ├── archive/
-│   └── v1.8.0/            ← リリース版スナップショット
+│   └── NAS2GP_v1.8.0.zip  ← リリース版スナップショット
 └── source/                ← 実行エントリ・パッケージ・実行時データを集約
     ├── app.py / entry_web.py / db_admin.py   ← 実行エントリ
     ├── nas2gp/            ← メインパッケージ
