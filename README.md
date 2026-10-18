@@ -16,8 +16,18 @@ and only then deletes them on the device. All operation is done through a browse
 
 - NAS 上の写真フォルダを走査し、未転送のファイルだけを端末へまとめて転送（バッチ転送）します。
 - 転送先は端末側の「作業フォルダ」（既定 `/sdcard/DCIM/NAS2GP`）。DCIM 配下のため Google Photos の自動バックアップ対象になります。
-- Google Photos のバックアップ完了を待ってから、**NAS2GP が転送したファイルだけ**を端末から削除します（個人の写真を巻き込む一括削除は行いません）。
+- Google Photos のバックアップ完了を待ってから、**NAS2GP が転送したファイルだけ**を端末から削除します（同期中の自動削除はファイル単位で、DCIM 全体などの一括削除は行いません）。端末ページには、作業フォルダの中身をまとめて削除する手動ボタンがあります（二重の確認と同意が必要）。
 - 転送状況は SQLite データベースで管理し、Web UI から進捗・統計・ファイル一覧を確認できます。
+
+### 開発を支援
+
+NAS2GP は無料で公開しているフリーツールです。気に入っていただけたら、開発の継続や動作検証用の機材のためにご支援いただけると励みになります。
+
+[![Support via PayPal](https://img.shields.io/badge/PayPal-%E6%94%AF%E6%8F%B4%E3%81%99%E3%82%8B-0070ba?logo=paypal&logoColor=white)](https://paypal.me/square3iris)
+
+- PayPal: <https://paypal.me/square3iris>
+
+支援は任意です。支援の有無で機能が制限されることはありません。
 
 ### 私の使い方（活用例）
 
@@ -36,7 +46,7 @@ Google Photos の無制限アップロードの条件は Google のポリシー�
 |---|---|
 | バッチ転送 | 件数 / 容量 / ハイブリッドの戦略で分割転送 |
 | Google Photos バックアップ待機 | 端末 UI を監視し、完了を確認してから次へ進む |
-| 安全な削除 | DB で管理している「転送済みファイル」のみを1件ずつ削除 |
+| 安全な削除 | 同期中の自動削除は、DB で管理している「転送済みファイル」のみを1件ずつ。加えて端末ページに、作業フォルダの中身をまとめて削除する手動ボタン（同意必須） |
 | 作業フォルダの動的選択 | 端末ページから DCIM 配下のフォルダを選んで変更可能 |
 | 障害時の自動復旧 | 電池残量低下・ADB 切断を検知し、段階的に復旧。復旧不能なら安全に停止 |
 | 切断解析ログ | 一定間隔で電池 / 温度 / 空き容量を記録し、切断時のスナップショットを保存 |
@@ -151,16 +161,6 @@ NAS2GP/
 - 長時間運用時の切断・電池切れなどへの自動復旧を実装していますが、完全ではありません。復旧できない場合は安全に停止する挙動をとります。
 - 既知の不具合は GitHub のリポジトリ内の `docs/ja/CHANGELOG.md` および `docs/ja/ROADMAP_AND_TODO.md` に随時記載します（配布ZIPには含まれません）。
 
-### 開発を支援
-
-NAS2GP は無料で公開しているフリーツールです。気に入っていただけたら、開発の継続や動作検証用の機材のためにご支援いただけると励みになります。
-
-[![Support via PayPal](https://img.shields.io/badge/PayPal-%E6%94%AF%E6%8F%B4%E3%81%99%E3%82%8B-0070ba?logo=paypal&logoColor=white)](https://paypal.me/square3iris)
-
-- PayPal: <https://paypal.me/square3iris>
-
-支援は任意です。支援の有無で機能が制限されることはありません。
-
 ### ライセンス
 
 MIT License（`LICENSE` を参照）。
@@ -173,8 +173,18 @@ MIT License（`LICENSE` を参照）。
 
 - Scans a photo library on your NAS and transfers only the files that have not been sent yet, in batches.
 - The destination is a "working folder" on the device (default `/sdcard/DCIM/NAS2GP`). Being under DCIM, it is eligible for Google Photos auto backup.
-- After Google Photos finishes backing the files up, **only the files transferred by NAS2GP** are deleted from the device (there is no bulk delete that could touch your personal photos).
+- After Google Photos finishes backing the files up, **only the files transferred by NAS2GP** are deleted from the device (automatic deletion during sync works file by file; there is no automatic bulk delete of all of DCIM). The device page also has a manual button that clears the whole working folder (double confirmation and consent required).
 - Transfer state is tracked in a SQLite database. The Web UI shows progress, statistics and the file list.
+
+### Support development
+
+NAS2GP is free software. If you find it useful, your support helps cover continued development and test devices for verification.
+
+[![Support via PayPal](https://img.shields.io/badge/PayPal-Support-0070ba?logo=paypal&logoColor=white)](https://paypal.me/square3iris)
+
+- PayPal: <https://paypal.me/square3iris>
+
+Donations are optional and never limit any features.
 
 ### My use case
 
@@ -193,7 +203,7 @@ The conditions for Google Photos unlimited upload may change with Google's polic
 |---|---|
 | Batch transfer | Split by count / size / hybrid strategy |
 | Google Photos backup wait | Monitors the device UI and proceeds only after backup completes |
-| Safe deletion | Deletes only the "already transferred" files tracked in the DB, one file at a time |
+| Safe deletion | Automatic deletion during sync removes only the "already transferred" files tracked in the DB, one at a time. The device page also offers a manual button to clear the whole working folder (consent required) |
 | Dynamic working folder | Change it from the device page by browsing folders under DCIM |
 | Automatic recovery | Detects low battery / ADB disconnects and recovers step by step; stops safely if it cannot |
 | Disconnect analysis log | Periodically records battery / temperature / free space and snapshots the state on a disconnect |
@@ -307,16 +317,6 @@ NAS2GP/
 - The "backup complete" detection relies on the Google Photos screen (UI dump), so a Google Photos UI change may break the detection.
 - Automatic recovery from disconnects / battery depletion during long runs is implemented, but it is not perfect; when recovery is not possible the tool stops safely.
 - Known issues are recorded in `docs/en/CHANGELOG.md` and `docs/en/ROADMAP_AND_TODO.md` in the GitHub repository (they are not included in the distribution ZIP).
-
-### Support development
-
-NAS2GP is free software. If you find it useful, your support helps cover continued development and test devices for verification.
-
-[![Support via PayPal](https://img.shields.io/badge/PayPal-Support-0070ba?logo=paypal&logoColor=white)](https://paypal.me/square3iris)
-
-- PayPal: <https://paypal.me/square3iris>
-
-Donations are optional and never limit any features.
 
 ### License
 

@@ -160,6 +160,12 @@ removed desktop-GUI era is compressed).
 - **Docs (v1.13.7)**: added `/help` to the page list in `docs/{ja,en}/ARCHITECTURE.md`.
 - **Version bump (v1.13.7)**: `settings.APP_VERSION` changed from `1.13.6` to `1.13.7`.
 
+### v1.13.8 — README wording fixes (deletion spec and support funnel placement)
+
+- **README wording fix (v1.13.8)**: updated the deletion descriptions in the overview and "Main features" to match the v1.13.6 spec. It now states that automatic deletion during sync works file by file, and that the device page has a manual button to clear the whole working folder (consent required) (ja/en).
+- **Support section placement (v1.13.8)**: moved "開発を支援 / Support development" in the README from just before the License (bottom) to right after the overview (top), placing it near the download funnel (ja/en).
+- **Version bump (v1.13.8)**: `settings.APP_VERSION` changed from `1.13.7` to `1.13.8`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.
