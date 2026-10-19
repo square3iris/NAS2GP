@@ -21,6 +21,13 @@ def _sh_quote(posix_path):
     return shlex.quote(s)
 
 
+# v1.14.1: 実測コマンド の 出力 末尾 に 付ける マーカー 。 ADB 切断 など で 出力 が
+# 途中 まで しか 返ら なかっ た 場合 に 「0 件 (空)」 と 誤認 し ない ため の 目印 。
+# v1.14.1: marker appended to the end of a measurement command; it prevents a
+# truncated reply (e.g. the ADB link dropped) from being mistaken for "empty".
+_MEASURE_END_MARKER = "__NAS2GP_MEASURE_END__"
+
+
 class Device:
 
     @property
@@ -603,32 +610,43 @@ class Device:
         except Exception:
             return False
 
-    def measure_folder(self, remote_path):
-        """v1.13.6: 指定 フォルダ 配下 の ファイル 数 と 合計 サイズ (バイト) を 端末 から
-        実測 して 返す (作業フォルダ 全削除 の 事前 確認 表示 用)。/sdcard 配下 のみ。
-        戻り値: (count, bytes) 。 取得 でき なかっ た 場合 は (0, 0) 。
+    def measure_folder_strict(self, remote_path):
+        """v1.14.1: 指定 フォルダ 配下 の (ファイル 数, 合計 バイト) を 厳密 に 実測 する 。
+        取得 でき なかっ た 場合 (端末 未接続 / 出力 が 途中 で 切れ た) は None を 返す。
+        出力 末尾 の マーカー で 途切れ を 検知 し 、 ADB 切断 を 「0 件 (空)」 と 誤認
+        し ない 。 /sdcard 配下 のみ。
 
-        v1.13.6: Measures the file count and total size (bytes) under the given folder
-        on the device, for the pre-wipe confirmation. Only paths under /sdcard.
+        v1.14.1: Strictly measures (file count, total bytes) under the given folder.
+        Returns None when unavailable (device not connected / truncated output). The
+        trailing marker detects truncation so an ADB drop is never mistaken for an
+        empty folder. Only paths under /sdcard.
         """
         safe = str(remote_path or "").strip().rstrip("/")
         if not safe or not safe.startswith("/sdcard"):
-            return 0, 0
+            return None
         try:
             if not ADB.has_device():
-                return 0, 0
+                return None
         except Exception:
-            return 0, 0
+            return None
         quoted = _sh_quote(safe)
         script = (
             f"find {quoted} -type f 2>/dev/null | wc -l; "
-            f"du -sk {quoted} 2>/dev/null | cut -f1"
+            f"du -sk {quoted} 2>/dev/null | cut -f1; "
+            f"echo {_MEASURE_END_MARKER}"
         )
         try:
             out = ADB.shell_output("sh", "-c", script) or ""
         except Exception:
-            return 0, 0
-        lines = [ln.strip() for ln in str(out).splitlines() if ln.strip()]
+            return None
+        text = str(out)
+        if _MEASURE_END_MARKER not in text:
+            return None
+        lines = [
+            ln.strip()
+            for ln in text.replace(_MEASURE_END_MARKER, "").splitlines()
+            if ln.strip()
+        ]
         count, kb = 0, 0
         if len(lines) >= 1:
             try:
@@ -641,6 +659,17 @@ class Device:
             except Exception:
                 kb = 0
         return count, kb * 1024
+
+    def measure_folder(self, remote_path):
+        """v1.13.6: 指定 フォルダ 配下 の ファイル 数 と 合計 サイズ (バイト) を 端末 から
+        実測 して 返す (作業フォルダ 全削除 の 事前 確認 表示 用)。/sdcard 配下 のみ。
+        戻り値: (count, bytes) 。 取得 でき なかっ た 場合 は (0, 0) 。
+
+        v1.13.6: Measures the file count and total size (bytes) under the given folder
+        on the device, for the pre-wipe confirmation. Only paths under /sdcard.
+        """
+        res = self.measure_folder_strict(remote_path)
+        return res if res is not None else (0, 0)
 
     def delete_folder_contents(self, remote_path):
         """v1.13.6: 指定 フォルダ 配下 の ファイル / サブフォルダ を すべて 削除 する
@@ -669,6 +698,70 @@ class Device:
             )
         except Exception:
             return False
+
+    def wipe_folder_contents(self, remote_path, max_rounds=3):
+        """v1.14.1: 作業 フォルダ の 中身 を 削除 し 、 実測 で 空 に なっ た こと まで 検証
+        する 。 ADB 回線 断 など で 1 回 の 削除 が 途中 で 切れ た 場合 (端末 側 だけ 部分
+        削除 さ れ 、 戻り 値 は 失敗 に な る) は 、 接続 を 復旧 し て 残り を 再 実行 する
+        (max_rounds 回 まで)。 削除 前 後 の 空き 容量 も 併せて 返す 。
+
+        戻り値 dict:
+          ok            : 空 に なっ た こと を 実測 で 確認 でき た か
+          rounds        : 実行 し た 削除 回数
+          before_count / before_bytes       : 削除 前 の 実測
+          remaining_count / remaining_bytes : 最終 実測 (None = 実測 できず)
+          free_gb_before / free_gb_after    : 空き 容量 (GB 、 取得 でき なけれ ば None)
+
+        v1.14.1: Deletes the working-folder contents and verifies by measurement that
+        the folder became empty. When a single delete is cut short (e.g. the ADB link
+        drops; the device may have removed only part of the entries), it recovers the
+        connection and repeats for the remainder (up to max_rounds). Also returns the
+        free space before/after.
+        """
+        out = {
+            "ok": False, "rounds": 0,
+            "before_count": 0, "before_bytes": 0,
+            "remaining_count": None, "remaining_bytes": None,
+            "free_gb_before": None, "free_gb_after": None,
+        }
+        safe = str(remote_path or "").strip().rstrip("/")
+        if not safe or not safe.startswith("/sdcard") or safe == "/sdcard":
+            return out
+
+        def _free():
+            try:
+                val = float(self.get_storage_root_free_gb() or 0.0)
+                return val if val > 0 else None
+            except Exception:
+                return None
+
+        def _recover():
+            try:
+                self.ensure_adb_alive(aggressive=True, shell_probe=True,
+                                      publish_unrecoverable=False)
+            except Exception:
+                pass
+
+        out["free_gb_before"] = _free()
+        _before = self.measure_folder_strict(safe)
+        if _before is not None:
+            out["before_count"], out["before_bytes"] = int(_before[0]), int(_before[1])
+        measured = _before
+        for _ in range(max(1, int(max_rounds or 1))):
+            self.delete_folder_contents(safe)
+            out["rounds"] += 1
+            measured = self.measure_folder_strict(safe)
+            if measured is not None and int(measured[0]) == 0:
+                break
+            # 残り が ある / 実測 でき ない → 接続 を 復旧 し て 次 の 周回 で 残り を 消す 。
+            # Leftovers or an unmeasurable link -> recover and retry the remainder.
+            _recover()
+        if measured is not None:
+            out["remaining_count"] = int(measured[0])
+            out["remaining_bytes"] = int(measured[1])
+            out["ok"] = (int(measured[0]) == 0)
+        out["free_gb_after"] = _free()
+        return out
 
     def list_subfolders(self, base_path="/sdcard"):
         """任意 の 端末 パス 直下 の サブフォルダ 一覧 を 返す (作業フォルダ 選択 用)。

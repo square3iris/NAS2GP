@@ -189,6 +189,14 @@ removed desktop-GUI era is compressed).
 - **Fixed the phase column of the device-state log (v1.14.0)**: the `phase` column of `logs/health.jsonl` was mostly (85 of 138 records observed) the literal `SYNC_PHASE_CHANGED`. A heading-only notification (`print_phase`) that carries no phase made the subscribers record the event name as the phase. The same cause also degraded the home-screen label to a generic text during long backup-completion waits; both are fixed.
 - **Version bump (v1.14.0)**: `settings.APP_VERSION` changed from `1.13.9` to `1.14.0`.
 
+### v1.14.1 — Verified working-folder wipe (permanent fix for leftovers holding disk space)
+
+- **Post-delete measurement (v1.14.1)**: "Delete the working folder contents" used to judge success from the shell return value alone. If the ADB link dropped mid-way it was still treated as success, the rows of the surviving files were reconciled to "deleted", and they were permanently excluded from deletion while still occupying space. The folder is now re-measured on the device after deletion, and the DB is bulk-reconciled to DONE only when the folder is verified empty.
+- **Automatic retry of leftovers (v1.14.1)**: if the measurement still reports files, the ADB link is recovered and the wipe is retried up to 3 rounds. If files remain anyway, the bulk DONE reconcile is skipped and only the still-present rows are re-queued (PENDING) so the next delete stage reclaims them for sure.
+- **Clearer UI (v1.14.1)**: when the wipe cannot be completed, it is no longer silently reported as success; the remaining count, size and free space are shown inline with a prompt to retry (new i18n key `web.device.uploaded_leftover`).
+- **Implementation (v1.14.1)**: added `Device.measure_folder_strict()` (a strict variant returning `None` on failure) and `Device.wipe_folder_contents()` (delete -> measure -> recover -> retry), and rewrote `POST /api/device/delete_uploaded` to be verification-based. Device free space before/after is now logged and returned.
+- **Version bump (v1.14.1)**: `settings.APP_VERSION` changed from `1.14.0` to `1.14.1`.
+
 ### v1.9.0 — macOS / Linux support (best-effort)
 
 - **macOS / Linux support (v1.9.0)**: made the previously Windows-only setup runnable on macOS / Linux (best-effort). Not verified on real macOS hardware.

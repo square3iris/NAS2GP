@@ -204,8 +204,19 @@ async function callDeleteUploaded(){
   try {
     const r = await fetch('/api/device/delete_uploaded', { method:'POST' });
     const j = await r.json();
-    if (j.ok !== true) {
+    if (j.remaining_count === null || typeof j.remaining_count === 'undefined') {
       _pxMsg(tf('web.device.uploaded_fail', {err: j.error || ''}), 'var(--err)');
+      return;
+    }
+    if (Number(j.remaining_count) > 0) {
+      // 残骸あり: 削除は完了していない。残数を明示して再実行を促す。
+      // Leftovers remain: report the count/size and ask the user to retry.
+      _pxMsg(tf('web.device.uploaded_leftover', {
+        n: Number(j.remaining_count).toLocaleString(),
+        gb: _pxGb(j.remaining_bytes),
+        free: Number(j.free_gb_after || 0).toFixed(2)
+      }), 'var(--err)');
+      loadWorkdir();
       return;
     }
     let out = tf('web.device.uploaded_result', {

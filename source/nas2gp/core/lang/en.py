@@ -456,6 +456,7 @@ WORDS = {
     "web.device.uploaded_running": "Deleting...",
     "web.device.uploaded_result": "✅ Deleted: {folder} / {total} ({gb} GB) / device free space: {free} GB",
     "web.device.uploaded_reconciled": "Reconciled pending deletions to DONE: {n}",
+    "web.device.uploaded_leftover": "⚠️ Some files could not be deleted: {n} file(s) ({gb} GB) remain on the device (device free space: {free} GB). Check the ADB connection and run it again.",
     "web.device.delete_dcim_all": "🧨 Delete everything under DCIM (dangerous)",
     "web.device.dcim_warn_note": "⚠️ This deletes all files and folders under /sdcard/DCIM. Photos not backed up to Google Photos may also be lost. This cannot be undone.",
     "web.device.dcim_check1": "I understand that photos not yet backed up will also be deleted.",

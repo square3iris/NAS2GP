@@ -511,6 +511,7 @@ WORDS = {
     "web.device.uploaded_running": "削除 中...",
     "web.device.uploaded_result": "✅ 削除完了: {folder} / {total} 件 ({gb} GB) / 端末 空き容量: {free} GB",
     "web.device.uploaded_reconciled": "削除 待ち DB を DONE に 整合: {n} 件",
+    "web.device.uploaded_leftover": "⚠️ 一部 の ファイル を 削除 でき ませ ん で し た: 残り {n} 件 ({gb} GB) が 端末 に 残っ て い ます (端末 空き容量: {free} GB)。ADB 接続 を 確認 し 、 もう 一度 実行 し て ください。",
     "web.device.delete_dcim_all": "🧨 DCIM 配下 を 全削除 (危険)",
     "web.device.dcim_warn_note": "⚠️ この 操作 は /sdcard/DCIM 配下 の ファイル / フォルダ を すべて 削除 し ます。Google Photos に バックアップ し て い ない 写真 も 消える 可能性 が あり ます。元 に 戻せ ませ ん。",
     "web.device.dcim_check1": "バックアップ し て い ない 写真 も 削除 さ れ る こと を 理解 し まし た。",

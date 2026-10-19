@@ -1292,20 +1292,27 @@ def create_app() -> FastAPI:
     @app.post("/api/device/delete_uploaded")
     async def api_device_delete_uploaded():
         """
-        v1.13.6: 現在の作業フォルダ配下をすべて削除する (フォルダ自体は残す)。条件は
-        付けず、Google Photos 未完了のファイルも含めて消す。削除後は転送済みの行の
-        削除状態を DONE へ整合させる。破壊的な操作のため、同意ゲートで保護する。
+        v1.14.1: 現在の作業フォルダ配下をすべて削除する (フォルダ自体は残す)。条件は
+        付けず、Google Photos 未完了のファイルも含めて消す。削除後は必ず端末から実測
+        して残り件数を確認し、0 件と確認できた時だけ DB を DONE へ一括整合させる。
+        残骸が残った場合は一括 DONE 化を見送り、実在ファイルだけを PENDING に戻して
+        UI に残数を表示する (シェル戻り値だけで成功扱いにして容量リークを再発させない)。
 
-        v1.13.6: Deletes everything under the current working folder, keeping the folder
+        v1.14.1: Deletes everything under the current working folder, keeping the folder
         itself. No conditions: files not yet backed up to Google Photos are also removed.
-        Afterwards the delete state of transferred rows is reconciled to DONE. This is
-        destructive, so it is protected by the consent gate.
+        After deletion the remainder is measured on the device; the DB is bulk-reconciled
+        to DONE only when the folder is verified empty. If any file remains, the bulk
+        reconcile is skipped and the still-present rows are re-queued (PENDING) so the
+        leftover size is reported in the UI instead of being silently lost.
         """
         _blk = _consent_block()
         if _blk:
             return JSONResponse(status_code=409, content=_blk)
         result = {"ok": False, "path": "", "total": 0, "bytes": 0,
-                  "db_reconciled": 0, "free_gb_after": None, "logs": [], "error": None}
+                  "db_reconciled": 0, "requeued": 0, "rounds": 0,
+                  "remaining_count": None, "remaining_bytes": None,
+                  "free_gb_before": None, "free_gb_after": None,
+                  "logs": [], "error": None}
         try:
             from nas2gp.core import settings as _s_dp2
             from nas2gp.device.device import Device as _Px2
@@ -1316,26 +1323,73 @@ def create_app() -> FastAPI:
                 result["error"] = "作業フォルダ が 未設定 です 。"
                 return result
             px2 = _Px2()
+            _Lg2.info(f"[Web][作業フォルダ全削除] 開始 対象={result['path']}")
+            _out = {}
             try:
-                _cnt, _bytes = px2.measure_folder(result["path"])
-                result["total"] = int(_cnt or 0)
-                result["bytes"] = int(_bytes or 0)
-            except Exception:
-                pass
-            _Lg2.info(f"[Web][作業フォルダ全削除] 開始 対象={result['path']} 件数={result['total']}")
-            _ok = False
-            try:
-                _ok = bool(px2.delete_folder_contents(result["path"]))
+                _out = px2.wipe_folder_contents(result["path"]) or {}
             except Exception as _e_del:
                 result["logs"].append(f"削除 例外: {_e_del}")
-            if not _ok:
-                result["error"] = "削除 に 失敗 し まし た (ADB 接続 を 確認 し て ください)。"
+            result["total"] = int(_out.get("before_count") or 0)
+            result["bytes"] = int(_out.get("before_bytes") or 0)
+            result["rounds"] = int(_out.get("rounds") or 0)
+            result["free_gb_before"] = _out.get("free_gb_before")
+            result["free_gb_after"] = _out.get("free_gb_after")
+            result["remaining_count"] = _out.get("remaining_count")
+            result["remaining_bytes"] = _out.get("remaining_bytes")
+            _rem_cnt = result["remaining_count"]
+            if _rem_cnt is None:
+                # 実測 でき ず = 削除 の 成否 を 確認 でき ない 。 DB は 触ら ない 。
+                # Unmeasurable -> the result is unverified; leave the DB untouched.
+                result["error"] = "削除後 の 実測に 失敗 し まし た (ADB 接続 を 確認 し て ください)。"
+                _Lg2.error(f"[Web][作業フォルダ全削除] 実測失敗 対象={result['path']}")
                 return result
+            if int(_rem_cnt) > 0:
+                # 残骸 あり → 一括 DONE 化 は せず 、 実在 ファイル だけ PENDING へ 戻す 。
+                # Leftovers -> skip the bulk reconcile and re-queue present files only.
+                try:
+                    from nas2gp.device.adb import ADB as _ADB2
+                    _work = result["path"].rstrip("/")
+                    _names = set(
+                        str(x).strip()
+                        for x in (_ADB2.list_dir(_work) or [])
+                        if str(x).strip()
+                    )
+                    if _names:
+                        _db_r = _Db2()
+                        try:
+                            _rows = list(_db_r.get_phone_delete_done_files() or [])
+                        finally:
+                            try:
+                                _db_r.close()
+                            except Exception:
+                                pass
+                        _path_by_name = {str(fn): p for (p, fn) in _rows if fn}
+                        _stale = [_path_by_name[fn] for fn in _names if fn in _path_by_name]
+                        if _stale:
+                            _db_w = _Db2()
+                            try:
+                                _fixed = int(_db_w.mark_phone_delete_pending_bulk(_stale) or 0)
+                                if _fixed:
+                                    _db_w.commit()
+                                result["requeued"] = _fixed
+                            finally:
+                                try:
+                                    _db_w.close()
+                                except Exception:
+                                    pass
+                except Exception as _e_rq:
+                    result["logs"].append(f"残骸 の PENDING 復帰 スキップ: {_e_rq}")
+                result["error"] = "一部 の ファイル が 削除 でき ませ ん で し た。"
+                _Lg2.error(
+                    f"[Web][作業フォルダ全削除] 残骸あり 残り={result['remaining_count']} 件 "
+                    f"/ {result['remaining_bytes']} B / PENDING復帰={result['requeued']}"
+                )
+                return result
+            # 0 件確認 → 一括整合 (存在しないファイルへの空振り再試行を防ぐ)。
+            # Verified empty -> bulk reconcile to DONE.
+            result["remaining_count"] = 0
+            result["remaining_bytes"] = 0
             result["ok"] = True
-            # 転送 済み 行 の 削除 状態 を DONE へ 整合 さ せる (存在 し ない ファイル へ の
-            # 空振り 再試行 を 防ぐ)。
-            # Reconcile the delete state of transferred rows to DONE (avoids retrying
-            # files that no longer exist).
             try:
                 _db2 = _Db2()
                 try:
@@ -1350,12 +1404,9 @@ def create_app() -> FastAPI:
                         pass
             except Exception as _e_db:
                 result["logs"].append(f"DB 整合 スキップ: {_e_db}")
-            try:
-                result["free_gb_after"] = float(px2.get_storage_root_free_gb() or 0.0)
-            except Exception:
-                result["free_gb_after"] = None
             _Lg2.success(
-                f"[Web][作業フォルダ全削除] 完了 件数={result['total']} DB整合={result['db_reconciled']}"
+                f"[Web][作業フォルダ全削除] 完了 件数={result['total']} "
+                f"DB整合={result['db_reconciled']} 空き={result['free_gb_after']}"
             )
         except Exception as e:
             result["error"] = f"{type(e).__name__}: {e}"
