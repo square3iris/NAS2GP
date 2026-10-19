@@ -142,6 +142,9 @@ class WebSyncRuntime:
         }
         self.logs: List[Dict[str, Any]] = []
         self.config: Optional[Dict[str, Any]] = None
+        # v1.13.9: 前回 の 途中 停止 チェックポイント から 再開 する か (開始 時 に UI が 指定)。
+        # v1.13.9: Whether to resume from the previous interrupted-run checkpoint (set by the UI on start).
+        self.resume_mode = False
         self._events_installed = False
         self._tee_installed = False
         self._saved_stdout = None
@@ -242,7 +245,15 @@ class WebSyncRuntime:
                 with self.lock:
                     if d.get("phase"):
                         self.state["phase"] = str(d["phase"])
-                    elif name and "_" in name:
+                    elif name and name != ev_mod.SYNC_PHASE_CHANGED and "_" in name:
+                        # v1.14.0: SYNC_PHASE_CHANGED は phase を 欠く こと が ある
+                        #   (print_phase の 見出し 通知)。 その 場合 は 前回 の フェーズ を
+                        #   保持 する 。 以前 は イベント 名 から "PHASE_CHANGED" を 作り 、
+                        #   長時間 の バックアップ 待機 中 に 表示 が 汎用 文言 へ 落ち て いた 。
+                        # v1.14.0: SYNC_PHASE_CHANGED may lack a phase (print_phase
+                        #   headings); keep the previous phase then. It used to derive
+                        #   "PHASE_CHANGED" from the event name, degrading the display to
+                        #   a generic label during long backup waits.
                         self.state["phase"] = str(name.split("_", 1)[1])[:20]
                     self.state["last_event"] = str(name)
                     if d.get("detail"):
@@ -378,7 +389,22 @@ class WebSyncRuntime:
             setattr(_settings_mod, "PHOTO_DIR", photo_path)
 
             db = Database()
+            # v1.13.9: 途中 再開 を 選ば な かっ た 場合 は 、 前回 の チェックポイント を
+            #   破棄 し て 最初 から 実行 する (UI の 「最初から」 選択 に 対応)。
+            # v1.13.9: When not resuming, discard the previous checkpoint and start over
+            #   (matches the UI's "start over" choice).
+            if not bool(getattr(self, "resume_mode", False)):
+                try:
+                    db.clear_resume_checkpoint()
+                except Exception:
+                    pass
             sync = _Sync(db)
+            # v1.13.9: 途中 再開 モード を Uploader へ 引き継ぐ 。
+            # v1.13.9: Propagate the resume mode to the Uploader.
+            try:
+                sync.uploader.resume_mode = bool(getattr(self, "resume_mode", False))
+            except Exception:
+                pass
             # Sync.upload_all 内部 で events 経由 UPLOAD_PROGRESS_TICK / SYNC_PHASE_CHANGED 発行 さ れ て いる 想定
             # Assumes Sync.upload_all publishes UPLOAD_PROGRESS_TICK / SYNC_PHASE_CHANGED via events.
             # v1.7.18: 切断解析ログ (ハートビート) を 同期 実行 中 のみ 開始 する 。
@@ -427,11 +453,14 @@ class WebSyncRuntime:
                     self.state["phase"] = "ERROR"
             raise
 
-    def start(self, cfg: Dict[str, Any]):
+    def start(self, cfg: Dict[str, Any], resume: bool = False):
         with self.lock:
             if self.state["running"]:
                 return False
             self.config = dict(cfg or {})
+            # v1.13.9: 途中 再開 の 可否 を スレッド 起動 前 に 確定 する 。
+            # v1.13.9: Fix the resume choice before the worker thread starts.
+            self.resume_mode = bool(resume)
             self.stop_event.clear()
             self.thread = threading.Thread(
                 target=self._run_sync, args=(self.config,), name="WebSyncFlow", daemon=True
@@ -531,10 +560,14 @@ def _settings_ui_schema() -> List[Dict[str, Any]]:
         {"title": tr("settings.group.battery"), "desc": tr("settings.group.battery.desc"), "items": [
             {"key": "BATTERY_LOW_THRESHOLD_PCT", "label": tr("settings.label.battery_low_threshold"), "type": "int",
              "min": 0, "max": 100, "desc": tr("settings.tooltip.battery_low_threshold")},
+            {"key": "BATTERY_CRITICAL_PCT", "label": tr("settings.label.battery_critical"), "type": "int",
+             "min": 0, "max": 100, "desc": tr("settings.tooltip.battery_critical")},
             {"key": "BATTERY_WAIT_MAX_SEC", "label": tr("settings.label.battery_wait_max"), "type": "int",
              "min": 0, "max": 86400, "desc": tr("settings.tooltip.battery_wait_max")},
             {"key": "BATTERY_CHECK_INTERVAL_SEC", "label": tr("settings.label.battery_check_interval"), "type": "int",
              "min": 30, "max": 86400, "desc": tr("settings.tooltip.battery_check_interval")},
+            {"key": "DEVICE_TEMP_LIMIT_C", "label": tr("settings.label.device_temp_limit"), "type": "float",
+             "min": 0, "max": 80, "step": 0.5, "desc": tr("settings.tooltip.device_temp_limit")},
         ]},
         {"title": tr("settings.group.backup"), "desc": tr("settings.group.backup.desc"), "items": [
             {"key": "BACKUP_TIMEOUT", "label": tr("settings.label.backup_timeout"), "type": "int", "min": 10, "max": 10000,
@@ -1662,6 +1695,35 @@ def create_app() -> FastAPI:
             result["error"] = f"{type(e).__name__}: {e}"
         return result
 
+    @app.get("/api/resume_status")
+    async def api_resume_status():
+        """v1.13.9: 前回 の 途中 停止 チェックポイント の 有無 を UI へ 返す 。
+        v1.13.9: Report whether a previous interrupted-run checkpoint exists."""
+        has_cp = False
+        info: Dict[str, Any] = {}
+        try:
+            from nas2gp.storage.db import Database
+            db = Database()
+            try:
+                cp = db.get_resume_checkpoint()
+            finally:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+            if isinstance(cp, dict) and cp:
+                has_cp = True
+                info = {
+                    "batch_index": cp.get("batch_index"),
+                    "total_batches": cp.get("total_batches"),
+                    "phase_no": cp.get("phase_no"),
+                    "file_count": len(cp.get("batch_files") or []),
+                    "saved_at": cp.get("saved_at"),
+                }
+        except Exception:
+            has_cp = False
+        return {"ok": True, "has_checkpoint": has_cp, "checkpoint": info}
+
     @app.post("/api/start")
     async def api_start(payload: Optional[Dict[str, Any]] = None):
         _blk = _consent_block()
@@ -1672,12 +1734,14 @@ def create_app() -> FastAPI:
             cfg = load_and_apply_gui_config(silent=True)
         except Exception:
             cfg = {}
+        resume = False
         if isinstance(payload, dict):
+            resume = bool(payload.get("resume"))
             cfg.update({k: v for k, v in payload.items() if k in {
                 "BATCH_STRATEGY", "MAX_FILES_PER_BATCH", "MAX_BYTES_PER_BATCH",
                 "DEVICE_STORAGE_MARGIN_GB", "PHOTO_DIR",
             }})
-        ok = RUNTIME.start(cfg)
+        ok = RUNTIME.start(cfg, resume=resume)
         return {"ok": ok, "running": RUNTIME.snapshot()["running"]}
 
     @app.post("/api/stop")

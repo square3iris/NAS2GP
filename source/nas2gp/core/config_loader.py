@@ -32,8 +32,10 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
 
     "ADB_RECOVERY_WAIT_SEC": 300,
     "BATTERY_LOW_THRESHOLD_PCT": 20,
+    "BATTERY_CRITICAL_PCT": 10,
     "BATTERY_WAIT_MAX_SEC": 3600,
     "BATTERY_CHECK_INTERVAL_SEC": 600,
+    "DEVICE_TEMP_LIMIT_C": 45.0,
 
     "DISCONNECT_LOG_ENABLED": True,
     "DISCONNECT_HEARTBEAT_INTERVAL_SEC": 600,
@@ -102,6 +104,7 @@ def _apply_runtime_settings(cfg: Dict[str, Any], silent: bool = False) -> None:
         "MIN_ACCEPT_ELAPSED_SECONDS", "BACKUP_STALLED_LIMIT",
         "SCREEN_BRIGHTNESS_NIGHT", "SCREEN_BRIGHTNESS_DEFAULT",
         "ADB_RECOVERY_WAIT_SEC", "BATTERY_LOW_THRESHOLD_PCT",
+        "BATTERY_CRITICAL_PCT",
         "BATTERY_WAIT_MAX_SEC", "BATTERY_CHECK_INTERVAL_SEC",
         "DISCONNECT_HEARTBEAT_INTERVAL_SEC",
         "WEB_SERVER_PORT",
@@ -120,7 +123,8 @@ def _apply_runtime_settings(cfg: Dict[str, Any], silent: bool = False) -> None:
             except Exception:
                 pass
 
-    _floats = ["DEVICE_STORAGE_MARGIN_GB", "ADB_RECOVER_MIN_INTERVAL_SEC", "MIN_BACKUP_THROUGHPUT_MBPS"]
+    _floats = ["DEVICE_STORAGE_MARGIN_GB", "ADB_RECOVER_MIN_INTERVAL_SEC", "MIN_BACKUP_THROUGHPUT_MBPS",
+               "DEVICE_TEMP_LIMIT_C"]
     for k in _floats:
         if k in cfg:
             try:

@@ -57,6 +57,9 @@ class Uploader:
 
         self.db = db
         self.worker = UploadWorker()
+        # v1.13.9: True の とき 、 前回 の 途中 停止 チェックポイント から 再開 する 。
+        # v1.13.9: When True, resume from the previous interrupted-run checkpoint.
+        self.resume_mode = False
 
     @staticmethod
     def _safe_size(file_path):
@@ -152,11 +155,23 @@ class Uploader:
 
     def upload_files(self, files):
 
-        if not files:
+        files = self._normalize(files)
+
+        # v1.14.0: 取り残し復旧 候補 (端末 上 に 残っ た まま Google Photos 未確認 の ファイル)。
+        #   転送 完了 (T=DONE) かつ GP 未確認 (G=PENDING) かつ 端末 削除 未完了 (D!=DONE) の
+        #   行 は 、 再転送 対象 (T=PENDING 限定) にも Pre-1 GC (G=DONE 限定) にも 該当 せず 、
+        #   中断 した バッチ の 取り残し として 端末 容量 を 占有 し 続け る 。
+        # v1.14.0: leftover-recovery candidates (transferred but GP-unconfirmed files left
+        #   on the device). They match neither the re-transfer list (T=PENDING only) nor
+        #   Pre-1 GC (G=DONE only), so abandoned batches keep occupying device space.
+        try:
+            _leftover_cand = self.db.get_unconfirmed_transferred_files() or []
+        except Exception:
+            _leftover_cand = []
+
+        if not files and not _leftover_cand:
             print(tr("upl.info.nothing"))
             return
-
-        files = self._normalize(files)
 
         device_files = self.worker.camera_files()
 
@@ -176,6 +191,114 @@ class Uploader:
 
         _MAX_FILES_PER_BATCH, _MAX_BYTES_PER_BATCH = _cfg_batch_counts()
         batches = self._build_batches(files, _MAX_FILES_PER_BATCH, _MAX_BYTES_PER_BATCH)
+
+        # ====================================================================
+        # v1.13.9: 途中 停止 から の 再開 (resume) チェックポイント
+        #   バッチ 内 フェーズ の 途中 で 停止 し た 場合 、 次回 開始 時 に 「途中 から
+        #   再開 します か ?」 と 確認 し 、 YES なら 保存 済み の バッチ と フェーズ から
+        #   再開 する 。 NO なら チェックポイント を 破棄 し て 最初 から 実行 する 。
+        # v1.13.9: Resume checkpoint for interrupted runs. When a run stops mid-phase,
+        #   the next start can ask "resume from where you left off?" and continue from
+        #   the saved batch/phase (YES), or discard the checkpoint and start over (NO).
+        # ====================================================================
+        _resume_phase = 0
+        _resume_uploaded = []
+        _resume = None
+        try:
+            if getattr(self, "resume_mode", False):
+                _resume = self.db.get_resume_checkpoint()
+        except Exception:
+            _resume = None
+        if _resume:
+            try:
+                _rb = [tuple(x) for x in (_resume.get("batch_files") or [])]
+            except Exception:
+                _rb = []
+            if _rb:
+                _rb_paths = {str(p) for (p, _n) in _rb}
+                _tail = [f for f in files if str(f[0]) not in _rb_paths]
+                batches = [_rb] + self._build_batches(_tail, _MAX_FILES_PER_BATCH, _MAX_BYTES_PER_BATCH)
+                _resume_phase = int(_resume.get("phase_no") or 0)
+                try:
+                    _resume_uploaded = [tuple(x) for x in (_resume.get("uploaded_files") or [])]
+                except Exception:
+                    _resume_uploaded = []
+                try:
+                    from nas2gp.core.logger import Logger as _RsmLg
+                    _RsmLg.info(tr("log.flow.resume_start").format(
+                        batch=int(_resume.get("batch_index") or 1),
+                        phase=_resume_phase,
+                        n=len(_rb),
+                    ))
+                except Exception:
+                    pass
+            else:
+                _resume = None
+
+        # ====================================================================
+        # v1.14.0: 取り残し復旧 バッチ
+        #   端末 に 実在 する 取り残し (T=DONE / G=PENDING / D!=DONE) を 先頭 バッチ として
+        #   差し込む 。 転送 は 行わ ず 、 メディアスキャン → GP 起動 → バックアップ 完了待ち
+        #   → 削除 だけ を やり直す 。 GP 確認 前 に は 削除 し ない ため 、 「未 バックアップ の
+        #   まま 端末 から 消える」 事故 は 起き ない 。 途中 再開 チェックポイント が ある 場合は
+        #   そちら を 優先 し 、 取り残し は 次回 実行 で 処理 する 。
+        # v1.14.0: Leftover-recovery batch. Leftovers still present on the device are
+        #   prepended as leading batches; transfer is skipped and only media-scan -> GP
+        #   start -> backup wait -> delete are re-run. Nothing is deleted before GP
+        #   confirmation, so no un-backed-up file is ever lost. An explicit resume
+        #   checkpoint takes priority; leftovers are handled on the next run.
+        # ====================================================================
+        recover_paths = set()
+        if not _resume and _leftover_cand:
+            try:
+                _dev_names = {str(x).lower() for x in device_files}
+                _rec = [
+                    (str(p), str(n)) for (p, n) in _leftover_cand
+                    if str(n).lower() in _dev_names
+                ]
+            except Exception:
+                _rec = []
+            if _rec:
+                _rec_bytes = 0
+                try:
+                    _rec_bytes = sum(Uploader._safe_size(p) for p, _ in _rec)
+                except Exception:
+                    _rec_bytes = 0
+                try:
+                    from nas2gp.core.logger import Logger as _RecLg
+                    _RecLg.info(tr("log.flow.leftover_start").format(
+                        n=len(_rec), gb=round(_rec_bytes / 1024**3, 2)))
+                except Exception:
+                    pass
+                try:
+                    print(tr("log.flow.leftover_start").format(
+                        n=len(_rec), gb=round(_rec_bytes / 1024**3, 2)))
+                except Exception:
+                    pass
+                _rec_batches = self._build_batches(_rec, _MAX_FILES_PER_BATCH, _MAX_BYTES_PER_BATCH)
+                batches = _rec_batches + batches
+                recover_paths = {str(p) for (p, _n) in _rec}
+
+        def _save_checkpoint(_bi, _phase_no, _batch_files, _uploaded):
+            """バッチ 内 フェーズ の 開始 点 を 保存 する (途中 停止 時 の 再開 用)。
+            Persist the phase start point so an interrupted run can resume."""
+            try:
+                self.db.set_resume_checkpoint({
+                    "batch_index": int(_bi),
+                    "total_batches": len(batches),
+                    "phase_no": int(_phase_no),
+                    "batch_files": [[str(p), str(n)] for (p, n) in _batch_files],
+                    "uploaded_files": [[str(p), str(n)] for (p, n) in (_uploaded or [])],
+                    "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                })
+            except Exception:
+                pass
+
+        def _clear_checkpoint():
+            try:
+                self.db.clear_resume_checkpoint()
+            except Exception:
+                pass
 
         # ====================================================================
         # v1.7.9 共通 ヘルパー: 強力 ADB 再接続 (Pre1 / Pre0 / 各 Phase 開始 前 に 必ず 呼び出し)
@@ -219,13 +342,26 @@ class Uploader:
         #   - On device absence, retry reconnection for up to ADB_RECOVERY_WAIT_SEC
         #   - On limit/timeout, revert this batch's FAILED rows to PENDING and stop safely
         # ====================================================================
-        _bat_state = {"last_check": 0.0}
+        _bat_state = {"last_check": 0.0, "last_level": None}
 
         def _safe_int(v, default):
             try:
                 return int(v)
             except Exception:
                 return default
+
+        def _safe_float(v, default):
+            try:
+                return float(v)
+            except Exception:
+                return default
+
+        def _fmt_temp(v):
+            """温度表示用 の 整形 (小数1桁)。 / Format a temperature for display (1 decimal)."""
+            try:
+                return f"{float(v):.1f}"
+            except Exception:
+                return str(v)
 
         def _safe_stop_batch(batch, message: str):
             """ADB 切断 等 で 続行 不能 な とき 、この バッチ の FAILED を PENDING に 戻し て 停止 要求 する 。
@@ -248,9 +384,12 @@ class Uploader:
                 pass
 
         def _battery_gate(force: bool = False):
-            """低残量 (かつ 非充電) の とき 充電 / 残量 回復 まで 待機 する 。
+            """残量 が 閾値 未満 、 充電 中 で も 減少 中 、 または 本体 温度 が 上限 を 超え た とき 、
+            充電 / 冷却 まで 待機 する 。
             戻り値: "OK" (続行) / "STOPPED" (ユーザー 停止) / "TIMEOUT" (待機 上限 超過)。
-            Wait until charging / recovery when the battery is low (and not charging).
+            Wait until charging / cooling when the battery is below the threshold, the
+            level is falling even though the device reports charging, or the body
+            temperature exceeds DEVICE_TEMP_LIMIT_C.
             Returns "OK" / "STOPPED" / "TIMEOUT"."""
             try:
                 interval = float(getattr(_settings_module, "BATTERY_CHECK_INTERVAL_SEC", 600) or 0)
@@ -262,10 +401,20 @@ class Uploader:
             _bat_state["last_check"] = _now
 
             thr = _safe_int(getattr(_settings_module, "BATTERY_LOW_THRESHOLD_PCT", 20), 20)
+            crit = _safe_int(getattr(_settings_module, "BATTERY_CRITICAL_PCT", 10), 10)
             try:
                 wait_max = float(getattr(_settings_module, "BATTERY_WAIT_MAX_SEC", 3600) or 0)
             except Exception:
                 wait_max = 3600.0
+
+            # v1.14.0: 本体 温度 上限 (℃ )。 0 以下 は 無効 。 冷却 判定 は 上限 -3℃ の
+            #   ヒステリシス を 使う (上限 付近 で の 再開 / 停止 の ばたつき 防止)。
+            # v1.14.0: Body-temperature limit (deg C). <= 0 disables it. Cooldown uses a
+            #   -3 C hysteresis to avoid flapping around the limit.
+            _temp_limit = _safe_float(getattr(_settings_module, "DEVICE_TEMP_LIMIT_C", 45.0), 45.0)
+            if _temp_limit <= 0.0:
+                _temp_limit = 0.0
+            _temp_resume = max(0.0, _temp_limit - 3.0) if _temp_limit > 0.0 else 0.0
 
             def _read_health():
                 try:
@@ -274,20 +423,75 @@ class Uploader:
                 except Exception:
                     return {}
 
-            _h = _read_health()
-            _lvl = _h.get("battery_level")
-            _chg = _h.get("battery_charging")
-            if _lvl is None:
-                return "OK"
-            _lvl_i = _safe_int(_lvl, -1)
-            if _lvl_i < 0:
-                return "OK"
-            if _lvl_i >= thr or _chg is True:
-                return "OK"
+            def _level_state(_h):
+                """(残量, 充電中, 前回残量) を 返す 。 読め た 残量 は 状態 に 記録 する 。
+                Return (level, charging, previous level); a readable level is recorded."""
+                _lvl_i = _safe_int(_h.get("battery_level"), -1) if _h.get("battery_level") is not None else -1
+                _prev = _bat_state.get("last_level")
+                if _lvl_i >= 0:
+                    _bat_state["last_level"] = _lvl_i
+                return _lvl_i, _h.get("battery_charging"), _prev
 
+            def _temp_of(_h):
+                _v = _h.get("battery_temp_c")
+                return None if _v is None else _safe_float(_v, None)
+
+            def _rising(_lvl_i, _chg, _prev):
+                """充電 中 で 、 かつ 前回 より 残量 が 増え て い る か 。
+                True when charging and the level is higher than the previous reading."""
+                return bool(_chg is True and _prev is not None and _lvl_i > _prev)
+
+            def _level_ok(_lvl_i, _chg, _prev):
+                """続行 可 か 。 絶対下限 未満 は charge 状態 に 関係 なく 続行 し ない 。
+                Whether the run may continue. Below the absolute floor it never may,
+                and below the threshold it must at least be rising while charging."""
+                if 0 <= _lvl_i < crit:
+                    return False
+                if _lvl_i >= thr:
+                    return True
+                return _rising(_lvl_i, _chg, _prev)
+
+            def _critical_stop(_lvl_i, _chg, _prev):
+                """絶対下限 まで 低下 し 、 かつ 回復 し て い ない → 即 安全停止。
+                At/below the absolute floor without recovery -> stop immediately."""
+                return bool(0 <= _lvl_i < crit and not _rising(_lvl_i, _chg, _prev))
+
+            def _bat_bad(_lvl_i, _chg, _prev):
+                """残量 が 理由 で 待機 すべ き か (読め ない とき は 待機 し ない)。
+                Whether the battery requires a wait (an unreadable level does not)."""
+                return bool(_lvl_i >= 0 and not _level_ok(_lvl_i, _chg, _prev))
+
+            def _temp_bad(_temp_f, waiting=False):
+                """本体 温度 が 理由 で 待機 すべ き か 。 waiting 中 は ヒステリシス 判定 。
+                Whether the temperature requires a wait; while waiting, use the hysteresis."""
+                if _temp_limit <= 0.0 or _temp_f is None:
+                    return False
+                return bool(_temp_f > (_temp_resume if waiting else _temp_limit))
+
+            _h = _read_health()
+            _lvl_i, _chg, _prev = _level_state(_h)
+            _temp_f = _temp_of(_h)
+            _bat_bad_i = _bat_bad(_lvl_i, _chg, _prev)
+            _temp_bad_i = _temp_bad(_temp_f)
+            if not _bat_bad_i and not _temp_bad_i:
+                return "OK"
+            _start_bat = bool(_bat_bad_i)
+            _start_temp = bool(_temp_bad_i)
+
+            # 待機 する 理由 を 記録 する (電池 / 温度)。
+            # Record why we paused (battery / temperature).
             try:
                 from nas2gp.core.logger import Logger as _BatLg
-                _BatLg.warning(tr("log.flow.battery_low").format(level=_lvl_i, thr=thr))
+                if _bat_bad_i:
+                    if _lvl_i < crit:
+                        _BatLg.error(tr("log.flow.battery_critical").format(level=_lvl_i, floor=crit))
+                    elif _chg is True:
+                        _BatLg.warning(tr("log.flow.battery_draining").format(level=_lvl_i, thr=thr))
+                    else:
+                        _BatLg.warning(tr("log.flow.battery_low").format(level=_lvl_i, thr=thr))
+                if _temp_bad_i:
+                    _BatLg.warning(tr("log.flow.temp_high").format(
+                        temp=_fmt_temp(_temp_f), limit=_fmt_temp(_temp_limit)))
             except Exception:
                 pass
 
@@ -297,30 +501,50 @@ class Uploader:
                 if _control.stop_now_requested():
                     return "STOPPED"
                 _remain = max(0, int(wait_max - _waited)) if wait_max > 0 else 0
-                _publish_phase(
-                    "BATTERY_WAIT",
-                    tr("log.flow.battery_wait").format(level=_lvl_i, thr=thr, remain=_remain),
-                )
+                if _temp_bad_i:
+                    _publish_phase(
+                        "TEMP_WAIT",
+                        tr("log.flow.temp_wait").format(
+                            temp=_fmt_temp(_temp_f), limit=_fmt_temp(_temp_limit), remain=_remain),
+                    )
+                else:
+                    _publish_phase(
+                        "BATTERY_WAIT",
+                        tr("log.flow.battery_wait").format(level=_lvl_i, thr=thr, remain=_remain),
+                    )
                 time.sleep(_poll)
                 _waited += _poll
                 _h = _read_health()
-                _lvl2 = _h.get("battery_level")
-                _chg2 = _h.get("battery_charging")
-                _l2 = _safe_int(_lvl2, -1)
-                if _chg2 is True or (_l2 >= 0 and _l2 >= thr):
+                _lvl_i, _chg, _prev = _level_state(_h)
+                _temp_f = _temp_of(_h)
+                if _critical_stop(_lvl_i, _chg, _prev):
+                    try:
+                        from nas2gp.core.logger import Logger as _BatCritLg
+                        _BatCritLg.error(tr("log.flow.battery_critical").format(level=_lvl_i, floor=crit))
+                    except Exception:
+                        pass
+                    return "TIMEOUT"
+                _bat_bad_i = _bat_bad(_lvl_i, _chg, _prev)
+                _temp_bad_i = _temp_bad(_temp_f, waiting=True)
+                if not _bat_bad_i and not _temp_bad_i:
                     try:
                         from nas2gp.core.logger import Logger as _BatOkLg
-                        _BatOkLg.success(tr("log.flow.battery_ok").format(
-                            level=(_l2 if _l2 >= 0 else _lvl_i)))
+                        if _start_temp:
+                            _BatOkLg.success(tr("log.flow.temp_ok").format(temp=_fmt_temp(_temp_f)))
+                        if _start_bat:
+                            _BatOkLg.success(tr("log.flow.battery_ok").format(
+                                level=(_lvl_i if _lvl_i >= 0 else "?")))
                     except Exception:
                         pass
                     return "OK"
-                if _l2 >= 0:
-                    _lvl_i = _l2
                 if wait_max > 0 and _waited >= wait_max:
                     try:
                         from nas2gp.core.logger import Logger as _BatNgLg
-                        _BatNgLg.error(tr("log.flow.battery_timeout").format(min=round(wait_max / 60)))
+                        if _temp_bad_i:
+                            _BatNgLg.error(tr("log.flow.temp_timeout").format(
+                                min=round(wait_max / 60), temp=_fmt_temp(_temp_f)))
+                        else:
+                            _BatNgLg.error(tr("log.flow.battery_timeout").format(min=round(wait_max / 60)))
                     except Exception:
                         pass
                     return "TIMEOUT"
@@ -501,6 +725,22 @@ class Uploader:
 
             batch_index += 1
 
+            # v1.13.9: 途中 再開 の 場合 、 先頭 バッチ は 保存 済み の フェーズ 番号 から 開始 する
+            #   (2=GP停止 / 3=転送 / 4=メディア / 5=GP起動 / 6=バックアップ待ち / 7=削除)。
+            # v1.14.0: 取り残し復旧 バッチ は 転送 済み の ため 常に フェーズ 4 から 開始 する 。
+            # v1.13.9: When resuming, the first batch starts at the saved phase number
+            #   (2=GP stop / 3=upload / 4=media / 5=GP start / 6=backup wait / 7=delete).
+            # v1.14.0: leftover-recovery batches always start at phase 4 (already transferred).
+            _is_recovery = bool(recover_paths) and bool(batch) and all(
+                str(p) in recover_paths for (p, _n) in batch
+            )
+            if _is_recovery:
+                _bphase = 4
+            elif batch_index == 1 and _resume_phase > 0:
+                _bphase = _resume_phase
+            else:
+                _bphase = 0
+
             self.print_progress()
 
             try:
@@ -564,6 +804,15 @@ class Uploader:
             for (file_path, _fn) in batch:
                 _batch_total_bytes += Uploader._safe_size(file_path)
             _need_gb = round(_batch_total_bytes / 1024**3, 3)
+            # v1.14.0: 転送 済み バッチ (取り残し復旧 / 途中 再開 で フェーズ 4 以降) の 対象 は
+            #   既に 端末 上 に ある (これ から 削除 する) ため 、 追加 の 空き 容量 は 不要 。
+            #   要求 サイズ を 0 に し て 、 容量 判定 で 誤って 停滞 / 復旧シーケンス に 入る の を
+            #   防ぐ 。
+            # v1.14.0: for already-transferred batches (leftover recovery / resume at phase 4+)
+            #   the targets already exist on the device (and are about to be deleted), so no
+            #   extra free space is needed; require 0 to avoid a spurious Pre-0 stall.
+            if _is_recovery or _bphase > 3:
+                _need_gb = 0.0
             _margin_gb = float(getattr(__import__("nas2gp.core.settings", fromlist=["_"]), "DEVICE_STORAGE_MARGIN_GB", 4.0))
             _STORAGE_RETRY_MAX = 3
             _STORAGE_RETRY_WAIT = 10
@@ -900,12 +1149,15 @@ class Uploader:
             print(tr("log.flow.phase1_gpstop"))
             print(tr("log.flow.phase1_gpstop_step"))
             _publish_phase("GP_STOP", tr("log.flow.phase_gpstop").format(batch=batch_index), phase_no=2, total_phases=7, batch_idx=batch_index)
-            try:
-                self.worker.device.stop_google_photos()
-            except Exception as e:
-                import traceback as _tb
-                from nas2gp.core.logger import Logger as _LGPstop
-                _LGPstop.warning(f"Phase1 Google Photos stop failed: {type(e).__name__}: {e}\n{_tb.format_exc()}")
+            # v1.13.9: 途中 再開 で Phase 3 以降 から 始める 場合 、 GP は 既に 停止 済み な ので スキップ。
+            # v1.13.9: When resuming at phase 3 or later, Google Photos is already stopped; skip.
+            if _bphase <= 2:
+                try:
+                    self.worker.device.stop_google_photos()
+                except Exception as e:
+                    import traceback as _tb
+                    from nas2gp.core.logger import Logger as _LGPstop
+                    _LGPstop.warning(f"Phase1 Google Photos stop failed: {type(e).__name__}: {e}\n{_tb.format_exc()}")
 
             # ---- Phase 2/6: NAS → 端末 転送
             # ---- Phase 2/6: NAS -> device transfer
@@ -922,6 +1174,10 @@ class Uploader:
                 pass
             _publish_phase("UPLOAD", tr("log.flow.phase_upload").format(batch=batch_index, n=len(batch)), phase_no=3, total_phases=7, batch_idx=batch_index)
             print(tr("log.flow.phase2_start").format(n=len(batch), gb=round(_need_gb,3)))
+            # v1.13.9: 転送 フェーズ の 開始 点 を 保存 (落ち た とき に ここ から 再開)。
+            # v1.13.9: Save the upload phase start point (resume point if the run dies here).
+            if _bphase <= 3:
+                _save_checkpoint(batch_index, 3, batch, [])
 
             # v1.8.0: 端末 側 の 作業フォルダ が 無けれ ば 作成 する (既定 /sdcard/DCIM/NAS2GP)。
             # v1.8.0: Ensure the device-side working folder exists (default /sdcard/DCIM/NAS2GP).
@@ -936,11 +1192,30 @@ class Uploader:
             except Exception:
                 pass
 
-            uploaded_files = []
+            # v1.14.0: 取り残し復旧 バッチ は その バッチ の 全 ファイル を 転送済み と みなし 、
+            #   バックアップ 待ち / 削除 の 対象 に する (再転送 は し ない)。
+            # v1.14.0: for a recovery batch every file counts as already uploaded, so it is
+            #   included in the backup-wait / delete phases (no re-transfer).
+            if _is_recovery:
+                uploaded_files = list(batch)
+            elif _bphase > 3:
+                uploaded_files = list(_resume_uploaded)
+            else:
+                uploaded_files = []
             recovery_count = 0
             backup_ok = False
+            if _bphase > 3:
+                # v1.13.9: 転送 済み の 一覧 を 復元 する (再 転送 は せ ず 、 以降 の GP 待ち /
+                #   削除 フェーズ だけ を 続行 する)。
+                # v1.13.9: Restore the already-uploaded list (skip re-transfer; run only the
+                #   subsequent backup-wait / delete phases).
+                try:
+                    for _p, _n in uploaded_files:
+                        device_files.add(_n)
+                except Exception:
+                    pass
 
-            for (file_path, filename) in batch:
+            for (file_path, filename) in ([] if _bphase > 3 else batch):
 
                 # v1.7.15: 即時 停止 要求 → この バッチ の 残り ファイル 転送 を 中断 する。
                 #   送信 済み ファイル の GP バックアップ 待ち / 削除 は 安全 の ため 継続 する。
@@ -1081,12 +1356,20 @@ class Uploader:
             print()
             print("Media Scanner (Batch)")
             _publish_phase("MEDIA_SCAN", tr("log.flow.phase_mediascan").format(batch=batch_index), phase_no=4, total_phases=7, batch_idx=batch_index)
+            # v1.13.9: メディア スキャン フェーズ の 開始 点 を 保存。
+            # v1.13.9: Save the media-scan phase start point.
+            if _bphase <= 4:
+                _save_checkpoint(batch_index, 4, batch, uploaded_files)
             names_only = [n for _, n in uploaded_files]
-            self.worker.device.scan_media_batch(names_only)
+            if _bphase <= 4:
+                self.worker.device.scan_media_batch(names_only)
 
             # ---- Phase 4/6: Google Photos START + scroll top + delay 待機 (全バッチ 強制実行)
             # ---- Phase 4/6: Google Photos START + scroll top + delay wait (forced for every batch)
-            if len(uploaded_files) > 0:
+            if len(uploaded_files) > 0 and _bphase <= 5:
+                # v1.13.9: GP 起動 フェーズ の 開始 点 を 保存。
+                # v1.13.9: Save the Google Photos start phase point.
+                _save_checkpoint(batch_index, 5, batch, uploaded_files)
                 _publish_phase("GP_START", tr("log.flow.phase_gpstart").format(batch=batch_index), phase_no=5, total_phases=7, batch_idx=batch_index)
                 try:
                     from nas2gp.core import settings as _up_s2
@@ -1136,17 +1419,29 @@ class Uploader:
             _publish_phase("WAIT_BACKUP", tr("log.flow.phase_waitbackup").format(batch=batch_index), phase_no=6, total_phases=7, batch_idx=batch_index)
             print()
             print(tr("backup.wait"))
+            # v1.13.9: バックアップ 待機 フェーズ の 開始 点 を 保存。
+            # v1.13.9: Save the backup-wait phase start point.
+            if _bphase <= 6:
+                _save_checkpoint(batch_index, 6, batch, uploaded_files)
 
             batch_status = "DONE"
 
             backup_started_ts = time.time()
-            backup_result = self.worker.wait_backup_complete(batch_bytes=_batch_total_bytes)
-            if isinstance(backup_result, tuple) and len(backup_result) >= 2:
-                backup_ok = bool(backup_result[0])
-                recovery_count = int(backup_result[1])
-            else:
-                backup_ok = bool(backup_result)
+            if _bphase > 6:
+                # v1.13.9: Phase 6 (削除) から の 再開 。 削除 は backup_ok 時 のみ 実行 さ れる ため 、
+                #   ここ に 到達 し た 時点 で バックアップ は 完了 済み と みなす 。
+                # v1.13.9: Resuming from phase 6 (delete). Since deletion runs only when
+                #   backup_ok, reaching here means the backup already completed.
+                backup_ok = True
                 recovery_count = 0
+            else:
+                backup_result = self.worker.wait_backup_complete(batch_bytes=_batch_total_bytes)
+                if isinstance(backup_result, tuple) and len(backup_result) >= 2:
+                    backup_ok = bool(backup_result[0])
+                    recovery_count = int(backup_result[1])
+                else:
+                    backup_ok = bool(backup_result)
+                    recovery_count = 0
             backup_seconds = max(0.0, time.time() - backup_started_ts)
             upload_seconds = max(0.0, backup_started_ts - batch_started_ts)
 
@@ -1217,6 +1512,9 @@ class Uploader:
                 _publish_phase("DELETE", tr("log.flow.phase_delete").format(batch=batch_index, n=len(uploaded_files)), phase_no=7, total_phases=7, batch_idx=batch_index)
                 print()
                 print(tr("log.flow.phase6"))
+                # v1.13.9: 端末 削除 フェーズ の 開始 点 を 保存。
+                # v1.13.9: Save the device-delete phase start point.
+                _save_checkpoint(batch_index, 7, batch, uploaded_files)
 
                 for file_path, _ in uploaded_files:
                     self.db.update_google_photos_state(file_path, "DONE")
@@ -1316,6 +1614,16 @@ class Uploader:
                 self.db.commit()
             except Exception:
                 pass
+
+            # v1.13.9: この バッチ を 完了 し た ので 再開 チェックポイント を 破棄 する
+            #   (次 の バッチ の 開始 点 で 改めて 保存 さ れる)。
+            # v1.13.9: This batch finished, so drop the resume checkpoint
+            #   (it will be re-saved at the next batch's phase start).
+            _clear_checkpoint()
+
+        # v1.13.9: 全 バッチ 完了 → 再開 チェックポイント を 破棄。
+        # v1.13.9: All batches done -> drop the resume checkpoint.
+        _clear_checkpoint()
 
         print()
         print("=" * 60)

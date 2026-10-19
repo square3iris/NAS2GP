@@ -113,12 +113,19 @@ def _fmt(v, dash: str = "?") -> str:
 # ------------------------------------------------------------------
 
 def _on_phase(name, data):
+    """工程 フェーズ を 追跡 する 。 phase を 持た ない 通知 (見出し だけ の
+    print_phase など) で は 前回 値 を 保持 する 。 ここ で は イベント 名 を
+    フェーズ と し て 使わ ない (SYNC_PHASE_CHANGED が その まま health.jsonl の
+    phase 列 に 記録 さ れる 不具合 を 防ぐ)。
+
+    Track the processing phase. Notifications without a phase (headings from
+    print_phase etc.) keep the previous value; the event name is never used as a
+    phase (which used to record the literal "SYNC_PHASE_CHANGED" into the phase
+    column of health.jsonl)."""
     d = data if isinstance(data, dict) else {}
     with _LOCK:
         if d.get("phase"):
             _CTX["phase"] = str(d["phase"])
-        elif name:
-            _CTX["phase"] = str(name)
         if d.get("batch_idx") is not None:
             try:
                 _CTX["batch"] = int(d["batch_idx"])

@@ -1,6 +1,6 @@
 # Changelog — Summary
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 Format: Keep a Changelog / Versioning: Semantic Versioning.
 This file is a **summary** keeping only the highlights of each version (the long history from the
@@ -165,6 +165,29 @@ removed desktop-GUI era is compressed).
 - **README wording fix (v1.13.8)**: updated the deletion descriptions in the overview and "Main features" to match the v1.13.6 spec. It now states that automatic deletion during sync works file by file, and that the device page has a manual button to clear the whole working folder (consent required) (ja/en).
 - **Support section placement (v1.13.8)**: moved "開発を支援 / Support development" in the README from just before the License (bottom) to right after the overview (top), placing it near the download funnel (ja/en).
 - **Version bump (v1.13.8)**: `settings.APP_VERSION` changed from `1.13.7` to `1.13.8`.
+
+### v1.13.9 — Stronger battery monitoring and mid-phase resume
+
+- **Closed the battery-monitoring gap (v1.13.9)**: the old safety gate passed whenever the device reported "charging", so it could not detect a weak charger that cannot keep up (level falling 59% → 0% overnight), and the device was found powered off in the morning. Now, if the level is not higher than the previous reading even while charging, it is treated as a low battery and the run waits until it recovers.
+- **Safe stop at the absolute floor (v1.13.9)**: added `BATTERY_CRITICAL_PCT` (default `10`%). Below it, with no recovery from charging, the run stops safely regardless of the charging state. It can be changed from the "Battery" group on the Settings page.
+- **Monitoring while waiting for the Google Photos backup (v1.13.9)**: stage 6 (backup-completion wait) had no battery check, leaving room for the device to power off during a long wait. The wait loop now checks the level and charging state at a fixed interval and stops safely if the level falls.
+- **Resume from mid-phase (v1.13.9)**: when a run stops in the middle of a batch phase, the progress (batch index / phase number / already-processed files) is saved in `app_meta`. On the next start it asks "resume from where you left off?"; YES continues from the saved phase, NO discards the checkpoint and starts over from the beginning. The checkpoint is cleared automatically on a normal completion.
+- **Related API / keys (v1.13.9)**: added `GET /api/resume_status` (reports whether a checkpoint exists to the UI) and a `resume` flag on `POST /api/start`. Added the i18n keys `web.home.resume.*` / `log.flow.battery_draining` / `log.flow.battery_critical` / `log.flow.resume_start` to ja/en.
+- **Docs (v1.13.9)**: updated the config sample and sections 3.4 / 6.5 in `docs/{ja,en}/SETTINGS.md`.
+- **Version bump (v1.13.9)**: `settings.APP_VERSION` changed from `1.13.8` to `1.13.9`.
+
+### v1.14.0 — Leftover recovery (automatic reclaim of Google-Photos-unconfirmed files left on the device)
+
+- **Closed a structural gap for leftovers (v1.14.0)**: when a run is interrupted (e.g. power loss) and files stay on the device as "transferred (`T=DONE`) / Google Photos unconfirmed (`G=PENDING`)", they matched neither the re-transfer list (`T=PENDING` only) nor Pre-1 GC (`G=DONE` only), so they slipped through forever and kept occupying device space. This was the main cause of the observed "starts at 18 GB free, drops below 10 GB" behaviour.
+- **Leftover-recovery batch (v1.14.0)**: at the start of a run, leftovers still present on the device (`T=DONE` / `G=PENDING` / `D!=DONE`) are detected and prepended as leading batches **without re-transferring**; only media-scan -> Google Photos start -> backup-completion wait -> delete are re-run. Nothing is deleted before Google Photos confirmation, so no un-backed-up file is ever lost from the device.
+- **Continue even with zero transfer targets (v1.14.0)**: when there are no new transfer targets but leftovers exist, the run continues for recovery (previously it exited immediately).
+- **Avoid spurious capacity stalls (v1.14.0)**: for leftover-recovery and mid-phase-resume (phase 4+) batches, the targets already exist on the device (and are about to be deleted), so the Pre-0 required free-space demand is set to 0 to prevent a false "capacity short" stall / recovery sequence.
+- **Priority (v1.14.0)**: an explicit mid-phase resume checkpoint takes priority; leftovers are handled on the next run.
+- **Related implementation / keys (v1.14.0)**: added `Database.get_unconfirmed_transferred_files()` and implemented leftover-batch injection in `Uploader.upload_files()`. Added the i18n key `log.flow.leftover_start` to ja/en.
+- **Temperature protection gate (v1.14.0)**: added a gate that pauses new transfers and waits for cooldown when the body temperature exceeds the limit. It **resumes automatically once the temperature drops 3 C below the limit**; if it does not cool within `BATTERY_WAIT_MAX_SEC`, the failed items revert to `PENDING` and the run stops safely. The temperature is checked at the same timing as the battery, so no extra ADB calls are made.
+- **New setting `DEVICE_TEMP_LIMIT_C` (v1.14.0)**: the body-temperature limit (C, default 45.0). Configurable on the Settings page; `0` disables it. The default matches the "high temperature" indicator on the home screen.
+- **Fixed the phase column of the device-state log (v1.14.0)**: the `phase` column of `logs/health.jsonl` was mostly (85 of 138 records observed) the literal `SYNC_PHASE_CHANGED`. A heading-only notification (`print_phase`) that carries no phase made the subscribers record the event name as the phase. The same cause also degraded the home-screen label to a generic text during long backup-completion waits; both are fixed.
+- **Version bump (v1.14.0)**: `settings.APP_VERSION` changed from `1.13.9` to `1.14.0`.
 
 ### v1.9.0 — macOS / Linux support (best-effort)
 

@@ -58,8 +58,10 @@ NAS2GP/ (リポジトリルート)
   "ADB_FAILURE_POLICY": "pause_dialog",
   "ADB_RECOVERY_WAIT_SEC": 300,
   "BATTERY_LOW_THRESHOLD_PCT": 20,
+  "BATTERY_CRITICAL_PCT": 10,
   "BATTERY_WAIT_MAX_SEC": 3600,
   "BATTERY_CHECK_INTERVAL_SEC": 600,
+  "DEVICE_TEMP_LIMIT_C": 45.0,
   "DISCONNECT_LOG_ENABLED": true,
   "DISCONNECT_HEARTBEAT_INTERVAL_SEC": 600,
   "BACKUP_TIMEOUT": 600,
@@ -124,19 +126,30 @@ NAS2GP/ (リポジトリルート)
 | `ADB_RECOVER_MIN_INTERVAL_SEC` | float | `45.0` | 自動復旧 (recover) の最小実行間隔 (秒) |
 | `ADB_RECOVERY_WAIT_SEC` | int | `300` | 切断検知後に「復旧不能」と判定するまで再接続を粘る上限 (秒)。超過時は失敗分を PENDING に戻して安全停止 |
 
-### 3.4 ③ 転送 (UPLOAD): 電池・切断の安全ゲート
+### 3.4 ③ 転送 (UPLOAD): 電池・温度・切断の安全ゲート
 
-工程③『転送』中の電池切れ対策です。残量が低いと新規転送を止めて充電を待ち、
-回復しないまま上限を超えると安全に停止します。
+工程③『転送』中の端末保護です。残量が低いと新規転送を止めて充電を待ち、
+本体温度が上限を超えると冷えるまで待機します。どちらも回復しないまま上限を超えると安全に停止します。
 
 | キー | 型 | 既定 | 内容 |
 |---|---|---|---|
-| `BATTERY_LOW_THRESHOLD_PCT` | int | `20` | 低残量とみなす閾値 (%)。残量がこれ未満かつ非充電なら転送を一時停止 |
-| `BATTERY_WAIT_MAX_SEC` | int | `3600` | 低残量で待機する上限 (秒)。超過時は安全停止 |
-| `BATTERY_CHECK_INTERVAL_SEC` | int | `600` | 転送中に残量を確認する間隔 (秒)。各バッチ開始前は必ず確認 |
+| `BATTERY_LOW_THRESHOLD_PCT` | int | `20` | 低残量とみなす閾値 (%)。残量がこれ未満で、充電中でも残量が増えていなければ転送を一時停止 |
+| `BATTERY_CRITICAL_PCT` | int | `10` | 絶対下限 (%)。残量がこれ未満で充電による回復が見込めない場合は、充電状態に関係なく即 安全停止 |
+| `BATTERY_WAIT_MAX_SEC` | int | `3600` | 低残量・高温で待機する上限 (秒)。超過時は安全停止 |
+| `BATTERY_CHECK_INTERVAL_SEC` | int | `600` | 転送中に残量・温度を確認する間隔 (秒)。各バッチ開始前は必ず確認 |
+| `DEVICE_TEMP_LIMIT_C` | float | `45.0` | 本体温度の上限 (℃)。超えると新規転送を一時停止し冷却を待機。`0` で無効 |
 
 > 低残量を検知すると転送を一時停止し、充電または残量回復を検知すると自動で再開します。
+> **充電中でも残量が前回より減っている場合** (給電が追いつかない) は低残量として扱うため、
+> 一晩中「充電中」のまま残量が下がり続けて電源が落ちる事態を防ぎます。
 > 待機が `BATTERY_WAIT_MAX_SEC` を超えた場合は、そのバッチの失敗分を `PENDING` に戻して安全停止します。
+> また、Google Photos のバックアップ完了待機 (工程⑥) 中も同じ基準で残量を監視し、低下していれば安全停止します。
+
+> **温度保護 (v1.14.0)**: 本体温度が `DEVICE_TEMP_LIMIT_C` を超えると新規転送を一時停止し、
+> 冷却を待ちます。上限から **3℃ 下がると自動で再開** します (上限付近でのばたつき防止)。
+> 待機が `BATTERY_WAIT_MAX_SEC` を超えても冷えない場合は、失敗分を `PENDING` に戻して安全停止します。
+> 温度はバッテリーと同じタイミング (バッチ先頭 + `BATTERY_CHECK_INTERVAL_SEC` 間隔) で確認するため、
+> 追加の ADB 呼び出しは発生しません。
 
 ### 3.5 ⑥ Google Photos バックアップ待機 (WAIT_BACKUP)
 
@@ -331,9 +344,11 @@ python db_admin.py --help
 
 夜間に長時間運転すると、端末の電池切れで転送が止まる場合があります。次の設定で自動復旧・安全停止します。
 
-- `BATTERY_LOW_THRESHOLD_PCT`: 低残量とみなす閾値 (既定 20%)。残量がこれ未満かつ非充電なら待機
+- `BATTERY_LOW_THRESHOLD_PCT`: 低残量とみなす閾値 (既定 20%)。残量がこれ未満で、充電中でも残量が増えていなければ待機
+- `BATTERY_CRITICAL_PCT`: 絶対下限 (既定 10%)。残量がこれ未満で回復が見込めなければ充電状態に関係なく即 安全停止
 - `BATTERY_WAIT_MAX_SEC`: 待機の上限 (既定 3600 = 60 分)。超過で安全停止
 - `BATTERY_CHECK_INTERVAL_SEC`: 転送中の残量確認間隔 (既定 600 = 10 分)
+- `DEVICE_TEMP_LIMIT_C`: 本体温度の上限 (既定 45℃)。超えると転送を一時停止し冷却を待機、3℃ 下がると再開。`0` で無効
 - `ADB_RECOVERY_WAIT_SEC`: 切断後の復旧待ち上限 (既定 300 = 5 分)
 
 > **注意**: USB から電源が供給されていれば通常は電池切れを防げます。端末が完全に電源 OFF に

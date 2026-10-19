@@ -13,7 +13,7 @@ import os as _os
 # 更新 する とき は この 1 箇所 だけ を 変更 し て ください 。
 # Product version: the single source of truth referenced by the Web UI, OpenAPI (/docs)
 # and diagnostics. When releasing, update only this one place.
-APP_VERSION = "1.13.8"
+APP_VERSION = "1.14.0"
 
 # --------------------------------------------
 # Work Root (v1.7.4 追加: 診断 / リセット など の 「DB ファイル 相対パス 解決」 を 共通化)
@@ -198,9 +198,19 @@ ADB_FAILURE_POLICY = "pause_dialog"
 # FAILED rows are reverted to PENDING and the run stops safely.
 ADB_RECOVERY_WAIT_SEC = 300
 
-# バッテリー 残量 が これを 下回り 、 かつ 充電 中 で なけれ ば 新規 転送 を 一時 停止 する (% )。
-# Pause new transfers when the battery level drops below this value and the device is not charging (%).
+# バッテリー 残量 が これを 下回っ た ら 新規 転送 を 一時 停止 する (% )。
+#   充電 中 で あっ て も 残量 が 減少 し て いれ ば 「充電 が 追い つい て い ない」 と みなし 、
+#   この しきい値 を 下回っ た 時点 で 待機 / 安全停止 を 行う 。
+# Pause new transfers when the battery level drops below this value (%).
+#   Even while charging, a falling level means the charger cannot keep up,
+#   so falling below this threshold triggers the wait / safe-stop path.
 BATTERY_LOW_THRESHOLD_PCT = 20
+
+# これを 下回っ た ら 充電 状態 に 関係 なく 直ち に 安全停止 する 絶対 下限 (% )。
+#   充電 中 でも 放電 が 続く 端末 で 電源 が 落ちる の を 防ぐ 最後 の 砦 。
+# Absolute floor (%): below this the run stops safely regardless of charging state,
+#   the last line of defence against the device powering off on a weak charger.
+BATTERY_CRITICAL_PCT = 10
 
 # 低残量 で 一時 停止 し た 後 、 充電 / 残量 回復 を 待つ 上限 秒数 (既定 3600 = 60分)。
 # これを 超える と 安全 停止 する (FAILED を PENDING に 戻す)。
@@ -211,6 +221,15 @@ BATTERY_WAIT_MAX_SEC = 3600
 # バッテリー 残量 を 監視 する 間隔 秒 (既定 600 = 10分)。各 バッチ 開始 前 に は 必ず 確認 する 。
 # Battery monitoring interval in seconds (default 600 = 10 min). Always checked before each batch.
 BATTERY_CHECK_INTERVAL_SEC = 600
+
+# v1.14.0: 本体 温度 が これ を 超え た ら 新規 転送 を 一時 停止 し 冷却 を 待つ (℃ )。
+#   0 以下 で 無効 。 冷却 する と (上限 - 3℃ 以下) 自動 で 再開 し 、
+#   待機 上限 (BATTERY_WAIT_MAX_SEC) を 超え て も 冷え なけれ ば 安全 停止 する 。
+# v1.14.0: Pause new transfers and wait for cooldown when the body temperature
+#   exceeds this value (deg C). <= 0 disables it. Resumes automatically once it
+#   cools to (limit - 3 C); if it does not cool within BATTERY_WAIT_MAX_SEC, the
+#   run stops safely.
+DEVICE_TEMP_LIMIT_C = 45.0
 
 # --------------------------------------------
 # 切断解析ログ (v1.7.18 新規): ハートビート + 切断時 スナップショット

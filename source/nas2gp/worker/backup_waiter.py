@@ -105,6 +105,77 @@ class UploadWorker:
     def __init__(self):
 
         self.device = Device()
+        # v1.13.9: バックアップ 待機 中 の 電池 監視 状態 (前回 の 残量 と 確認 時刻)。
+        #   Battery-watch state for the backup wait (previous level and last check time).
+        self._bat_state = {"last_level": None, "last_check": 0.0}
+
+    def _battery_ok(self):
+        """v1.13.9: Google Photos の バックアップ 待機 中 も 電池 を 監視 する 。
+        残量 が 絶対 下限 未満 、 また は 閾値 未満 で 充電 に よる 回復 が 見込め ない とき
+        False を 返す (呼び出し 側 は 安全 停止 を 要求 する)。
+        戻り値: True=続行 可 / False=安全 停止 すべ き 。
+        v1.13.9: Monitor the battery during the Google Photos backup wait too.
+        Returns False (and the caller requests a safe stop) when the level is below
+        the absolute floor, or below the threshold without charging recovery."""
+        try:
+            from nas2gp.core import settings as _s
+            interval = float(getattr(_s, "BATTERY_CHECK_INTERVAL_SEC", 600) or 0)
+        except Exception:
+            _s = None
+            interval = 600.0
+        _now = time.time()
+        if interval > 0 and (_now - self._bat_state["last_check"]) < interval:
+            return True
+        self._bat_state["last_check"] = _now
+        try:
+            from nas2gp.device.adb import ADB as _ADB
+            _h = _ADB.get_device_health() or {}
+        except Exception:
+            return True
+        _lvl = _h.get("battery_level")
+        _chg = _h.get("battery_charging")
+        if _lvl is None:
+            return True
+        try:
+            _lvl_i = int(_lvl)
+        except Exception:
+            return True
+        if _lvl_i < 0:
+            return True
+        try:
+            thr = int(getattr(_s, "BATTERY_LOW_THRESHOLD_PCT", 20) or 20)
+        except Exception:
+            thr = 20
+        try:
+            crit = int(getattr(_s, "BATTERY_CRITICAL_PCT", 10) or 10)
+        except Exception:
+            crit = 10
+        _prev = self._bat_state.get("last_level")
+        self._bat_state["last_level"] = _lvl_i
+        _rising = bool(_chg is True and _prev is not None and _lvl_i > _prev)
+        if 0 <= _lvl_i < crit:
+            ok = False
+        elif _lvl_i >= thr:
+            ok = True
+        else:
+            ok = _rising
+        if ok:
+            return True
+        try:
+            if _lvl_i < crit:
+                Logger.error(tr("log.flow.battery_critical").format(level=_lvl_i, floor=crit))
+            elif _chg is True:
+                Logger.warning(tr("log.flow.battery_draining").format(level=_lvl_i, thr=thr))
+            else:
+                Logger.warning(tr("log.flow.battery_low").format(level=_lvl_i, thr=thr))
+        except Exception:
+            pass
+        try:
+            from nas2gp.core import control as _control
+            _control.request_stop_now()
+        except Exception:
+            pass
+        return False
 
     def camera_files(self):
 
@@ -779,6 +850,19 @@ class UploadWorker:
                 _events.publish(_events.BACKUP_RULES_TICK, state)
             except Exception:
                 pass
+
+            # v1.13.9: 待機 ループ で も 電池 を 監視 する 。 残量 が 危険 域 なら
+            #   この バッチ を バックアップ 未確認 (False) と し て 返し 、 実行 停止 を 要求 する
+            #   (従来 は この ループ に 電池 チェック が 無く 、 待機 中 に 端末 が 電源 落ち し た)。
+            # v1.13.9: Watch the battery inside the wait loop as well. If the level is
+            #   critical, return this batch as backup-not-confirmed (False) and request a
+            #   stop (previously this loop had no battery check and the device powered off).
+            try:
+                _bat_ok = self._battery_ok()
+            except Exception:
+                _bat_ok = True
+            if not _bat_ok:
+                return False, recovery_count
 
             time.sleep(interval)
 

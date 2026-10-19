@@ -58,8 +58,10 @@ On first launch or when loading an older file, missing keys are auto-filled with
   "ADB_FAILURE_POLICY": "pause_dialog",
   "ADB_RECOVERY_WAIT_SEC": 300,
   "BATTERY_LOW_THRESHOLD_PCT": 20,
+  "BATTERY_CRITICAL_PCT": 10,
   "BATTERY_WAIT_MAX_SEC": 3600,
   "BATTERY_CHECK_INTERVAL_SEC": 600,
+  "DEVICE_TEMP_LIMIT_C": 45.0,
   "DISCONNECT_LOG_ENABLED": true,
   "DISCONNECT_HEARTBEAT_INTERVAL_SEC": 600,
   "BACKUP_TIMEOUT": 600,
@@ -124,20 +126,34 @@ and how to recover from a disconnect.
 | `ADB_RECOVER_MIN_INTERVAL_SEC` | float | `45.0` | Minimum interval between automatic recovery runs (seconds) |
 | `ADB_RECOVERY_WAIT_SEC` | int | `300` | Max seconds to keep retrying reconnection before deciding "unrecoverable". On timeout, failed items revert to PENDING and the run stops safely |
 
-### 3.4 (3) Upload (UPLOAD): battery / disconnect safety gate
+### 3.4 (3) Upload (UPLOAD): battery / temperature / disconnect safety gate
 
-Guards against battery depletion during stage (3) Upload. When the level is low, new transfers stop
-and it waits for charging; if it does not recover within the cap, the run stops safely.
+Device protection during stage (3) Upload. When the level is low, new transfers stop and it waits
+for charging; when the body temperature exceeds the limit, it waits until it cools. If neither
+recovers within the cap, the run stops safely.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `BATTERY_LOW_THRESHOLD_PCT` | int | `20` | Threshold (%) treated as low battery. Pauses transfers when below it and not charging |
-| `BATTERY_WAIT_MAX_SEC` | int | `3600` | Max seconds to wait on low battery. Exceeding it stops the run safely |
-| `BATTERY_CHECK_INTERVAL_SEC` | int | `600` | Interval (seconds) to check battery during transfers. Always checked before each batch |
+| `BATTERY_LOW_THRESHOLD_PCT` | int | `20` | Threshold (%) treated as low battery. Pauses transfers when below it and the level is not rising even while charging |
+| `BATTERY_CRITICAL_PCT` | int | `10` | Absolute floor (%). Below it, with no recovery from charging, the run stops safely immediately regardless of the charging state |
+| `BATTERY_WAIT_MAX_SEC` | int | `3600` | Max seconds to wait on low battery / high temperature. Exceeding it stops the run safely |
+| `BATTERY_CHECK_INTERVAL_SEC` | int | `600` | Interval (seconds) to check battery and temperature during transfers. Always checked before each batch |
+| `DEVICE_TEMP_LIMIT_C` | float | `45.0` | Body-temperature limit (C). Above it, new transfers pause and wait for cooldown. `0` disables it |
 
 > When a low battery is detected, transfers pause automatically and resume once charging or
-> recovery is detected. If the wait exceeds `BATTERY_WAIT_MAX_SEC`, the batch's failed items
-> revert to `PENDING` and the run stops safely.
+> recovery is detected. **If the level is lower than the previous reading even while charging**
+> (the charger cannot keep up) it is treated as a low battery, preventing the overnight case where
+> the device reports "charging" all night while the level keeps falling until it powers off.
+> If the wait exceeds `BATTERY_WAIT_MAX_SEC`, the batch's failed items revert to `PENDING` and the
+> run stops safely. The battery is also monitored on the same basis while waiting for the
+> Google Photos backup to finish (stage 6), and the run stops safely if the level falls.
+
+> **Temperature protection (v1.14.0)**: when the body temperature exceeds `DEVICE_TEMP_LIMIT_C`,
+> new transfers pause and wait for cooldown. It **resumes automatically once the temperature drops
+> 3 C below the limit** (hysteresis to avoid flapping). If it does not cool within
+> `BATTERY_WAIT_MAX_SEC`, the failed items revert to `PENDING` and the run stops safely.
+> The temperature is checked at the same timing as the battery (batch start + every
+> `BATTERY_CHECK_INTERVAL_SEC`), so no extra ADB calls are made.
 
 ### 3.5 (6) Google Photos backup wait (WAIT_BACKUP)
 
@@ -336,9 +352,11 @@ The fastest approach is to watch the accept status live on the **Console** page.
 During long overnight runs, transfers can stop if the phone's battery runs out. The following
 settings provide automatic recovery and safe stop.
 
-- `BATTERY_LOW_THRESHOLD_PCT`: threshold treated as low battery (default 20%). Waits when below it and not charging
+- `BATTERY_LOW_THRESHOLD_PCT`: threshold treated as low battery (default 20%). Waits when below it and the level is not rising even while charging
+- `BATTERY_CRITICAL_PCT`: absolute floor (default 10%). Below it with no recovery, the run stops safely immediately regardless of the charging state
 - `BATTERY_WAIT_MAX_SEC`: wait limit (default 3600 = 60 min). Exceeding it stops safely
 - `BATTERY_CHECK_INTERVAL_SEC`: battery check interval during transfers (default 600 = 10 min)
+- `DEVICE_TEMP_LIMIT_C`: body-temperature limit (default 45 C). Above it, transfers pause and wait for cooldown, resuming 3 C lower. `0` disables it
 - `ADB_RECOVERY_WAIT_SEC`: recovery wait limit after a disconnect (default 300 = 5 min)
 
 > **Note**: USB power usually prevents battery depletion. If the device is fully powered OFF, ADB

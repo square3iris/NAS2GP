@@ -239,6 +239,73 @@ class Database(
             return False
 
     # ============================================================
+    # app_meta (key-value) : 再開チェックポイント等の小さな状態を保持
+    # app_meta helpers: store small state such as the resume checkpoint
+    # ============================================================
+
+    RESUME_CHECKPOINT_KEY = "resume_checkpoint"
+
+    def set_meta(self, key, value):
+        """app_meta へ key/value を保存する (既存は上書き)。
+        Store a key/value pair in app_meta (overwrites an existing key)."""
+        self.cursor.execute(
+            "INSERT OR REPLACE INTO app_meta(key, value) VALUES(?, ?)",
+            (str(key), None if value is None else str(value)),
+        )
+        self.conn.commit()
+
+    def get_meta(self, key, default=None):
+        """app_meta から key の値を取得する (無ければ default)。
+        Read a value from app_meta (returns default when absent)."""
+        try:
+            self.cursor.execute(
+                "SELECT value FROM app_meta WHERE key=?", (str(key),)
+            )
+            row = self.cursor.fetchone()
+            return row["value"] if row is not None else default
+        except sqlite3.OperationalError:
+            return default
+
+    def delete_meta(self, key):
+        """app_meta から key を削除する。
+        Delete a key from app_meta."""
+        self.cursor.execute("DELETE FROM app_meta WHERE key=?", (str(key),))
+        self.conn.commit()
+
+    def set_resume_checkpoint(self, data):
+        """v1.13.9: 中断時の再開ポイント (バッチ / フェーズ / 処理済みファイル) を JSON で保存する。
+        v1.13.9: Persist the resume checkpoint (batch / phase / processed files) as JSON."""
+        import json as _json
+        try:
+            self.set_meta(
+                self.RESUME_CHECKPOINT_KEY,
+                _json.dumps(data or {}, ensure_ascii=False),
+            )
+        except Exception:
+            pass
+
+    def get_resume_checkpoint(self):
+        """v1.13.9: 保存された再開ポイントを dict で返す (無ければ None)。
+        v1.13.9: Return the stored resume checkpoint as a dict (None when absent)."""
+        import json as _json
+        raw = self.get_meta(self.RESUME_CHECKPOINT_KEY)
+        if not raw:
+            return None
+        try:
+            data = _json.loads(raw)
+            return data if isinstance(data, dict) and data else None
+        except Exception:
+            return None
+
+    def clear_resume_checkpoint(self):
+        """v1.13.9: 再開ポイントを破棄する (正常完了時 / 「最初から」選択時)。
+        v1.13.9: Drop the resume checkpoint (on normal completion or "start over")."""
+        try:
+            self.delete_meta(self.RESUME_CHECKPOINT_KEY)
+        except Exception:
+            pass
+
+    # ============================================================
     # CRUD
     # ============================================================
 
@@ -507,6 +574,40 @@ class Database(
         FROM files
         WHERE google_photos_state = 'DONE'
           AND COALESCE(phone_delete_state, 'PENDING') IN ('PENDING', 'FAILED')
+        ORDER BY id ASC
+        """
+        if limit and int(limit) > 0:
+            base_sql += f" LIMIT {int(limit)}"
+        try:
+            self.cursor.execute(base_sql)
+            rows = self.cursor.fetchall() or []
+            return [(r["path"], r["filename"]) for r in rows]
+        except Exception:
+            return []
+
+    def get_unconfirmed_transferred_files(self, limit=None):
+        """v1.14.0 取り残し復旧 用:
+        端末 へ 転送 完了 (phone_transfer_state='DONE') し た が Google Photos で まだ
+        確認 でき て おら ず (google_photos_state='PENDING')、 端末 から も まだ 削除 でき て
+        いない (phone_delete_state != 'DONE') ファイル 一覧 を 返す 。
+
+        これら は 「再転送 対象 (get_pending_files: T=PENDING 限定)」 にも
+        「Pre-1 GC (get_phone_pending_delete_files: G=DONE 限定)」 にも 該当 せず 、
+        中断 した バッチ の 取り残し として 端末 容量 を 占有 し 続け る 。 呼び出し側 は
+        転送 を やり直さ ず に バックアップ 確認 → 削除 だけ を 再実行 する 。
+
+        v1.14.0 leftover-recovery: files transferred to the device but not yet confirmed
+        by Google Photos and not yet deleted on the device. They match neither the
+        re-transfer list (T=PENDING only) nor Pre-1 GC (G=DONE only), so abandoned batches
+        keep occupying device space. Callers re-run backup confirmation then delete
+        without re-transferring.
+        """
+        base_sql = """
+        SELECT path, filename
+        FROM files
+        WHERE phone_transfer_state = 'DONE'
+          AND COALESCE(google_photos_state, 'PENDING') = 'PENDING'
+          AND COALESCE(phone_delete_state, 'PENDING') != 'DONE'
         ORDER BY id ASC
         """
         if limit and int(limit) > 0:

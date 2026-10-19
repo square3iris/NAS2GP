@@ -99,8 +99,17 @@ class Sync:
             files = self.build_upload_targets(files)
 
             if not files:
-                print_step(tr("sync.warn.no_transfer_files"))
-                return 0, 0, 0
+                # v1.14.0: 転送 対象 が 無く て も 、 端末 に 取り残さ れ た GP 未確認 ファイル が
+                #   あれ ば 復旧 (バックアップ 確認 → 削除) の ため 続行 する 。
+                # v1.14.0: even with no transfer targets, continue when GP-unconfirmed
+                #   leftovers remain on the device so they can be recovered.
+                try:
+                    _has_leftover = bool(self.db.get_unconfirmed_transferred_files() or [])
+                except Exception:
+                    _has_leftover = False
+                if not _has_leftover:
+                    print_step(tr("sync.warn.no_transfer_files"))
+                    return 0, 0, 0
 
             norm_files = self.uploader._normalize(files)
             total_batches = _total_batches(norm_files)

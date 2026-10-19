@@ -49,6 +49,14 @@
       <button class="ghost" onclick="reloadStatus()">{{ tr('web.home.btn.refresh') }}</button>
     </div>
     <div id="cmd-msg" class="small" style="margin-top:8px; min-height:16px;"></div>
+    <div id="resume-confirm" class="small" style="display:none; margin-top:10px; padding:10px 14px; background:rgba(251,191,36,.12); border-left:4px solid var(--warn); border-radius:6px;">
+      <div id="resume-text" style="font-weight:700; margin-bottom:8px; color:var(--warn);"></div>
+      <div class="btns">
+        <button class="start" onclick="startWithResume(true)">{{ tr('web.home.resume.yes') }}</button>
+        <button class="ghost" onclick="startWithResume(false)">{{ tr('web.home.resume.no') }}</button>
+        <button class="ghost" onclick="cancelResume()">{{ tr('web.home.resume.cancel') }}</button>
+      </div>
+    </div>
   </section>
 
   <div class="small" style="text-align:center; padding:2px 0 6px;">
@@ -67,7 +75,8 @@ const PHASE_LABEL = {
   RECOVER:t('web.phase.recover'), SYNC:t('web.phase.sync'),
   CAPACITY:t('web.phase.capacity'), GP_STOP:t('web.phase.gp_stop'),
   MEDIA_SCAN:t('web.phase.media_scan'), GP_START:t('web.phase.gp_start'),
-  ADB_RECONNECT:t('web.phase.adb_reconnect'), BATTERY_WAIT:t('web.phase.battery_wait')
+  ADB_RECONNECT:t('web.phase.adb_reconnect'), BATTERY_WAIT:t('web.phase.battery_wait'),
+  TEMP_WAIT:t('web.phase.temp_wait')
 };
 // バッチ 内 の 工程 一覧 (番号 は flow.py の phase_no と 一致 させる こと)
 // List of in-batch steps (numbers must match phase_no in flow.py)
@@ -179,7 +188,7 @@ function render(snap){
   if (ph === 'ERROR'){ kind = 'err'; title = t('web.phase.error'); }
   else if (ph === 'STOP_REQUESTED'){ kind = 'warn'; title = t('web.phase.stop_requested'); }
   else if (ph === 'DONE'){ kind = 'done'; title = t('web.phase.done'); }
-  else if (ph === 'ADB_RECONNECT' || ph === 'BATTERY_WAIT'){ kind = 'warn'; title = PHASE_LABEL[ph] || t('web.home.banner.running'); }
+  else if (ph === 'ADB_RECONNECT' || ph === 'BATTERY_WAIT' || ph === 'TEMP_WAIT'){ kind = 'warn'; title = PHASE_LABEL[ph] || t('web.home.banner.running'); }
   else if (running){ kind = 'run'; title = PHASE_LABEL[ph] || t('web.home.banner.running'); }
   const banner = $('banner');
   if (banner) banner.className = 'banner ' + kind;
@@ -259,10 +268,47 @@ function _cmdMsg(text, color){
   if (text) el._t = setTimeout(() => { el.textContent = ''; }, 5000);
 }
 async function callStart(){
+  // v1.13.9: 前回 の 途中 停止 チェックポイント が あれ ば 、 「途中 から 再開 します か ?」
+  //   の 確認 を インライン で 表示 する (ブラウザ の alert は 使わ ない)。
+  // v1.13.9: If a previous interrupted checkpoint exists, show an inline
+  //   "resume from where it stopped?" confirmation (no browser alert).
   try {
-    const r = await fetch('/api/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    let cp = null;
+    try {
+      const rs = await fetch('/api/resume_status').then(r=>r.json());
+      if (rs && rs.has_checkpoint) cp = rs.checkpoint || {};
+    } catch(e) { cp = null; }
+    if (cp) { showResumeConfirm(cp); return; }
+    await _doStart(false);
+  } catch(e){ _cmdMsg(t('web.home.msg.start_fail') + ': ' + e, 'var(--err)'); }
+}
+function showResumeConfirm(cp){
+  const box = document.getElementById('resume-confirm');
+  const txt = document.getElementById('resume-text');
+  if (!box || !txt) { _doStart(false); return; }
+  const msg = t('web.home.resume.text')
+    .replace('{batch}', cp.batch_index != null ? cp.batch_index : '?')
+    .replace('{total}', cp.total_batches != null ? cp.total_batches : '?')
+    .replace('{phase}', cp.phase_no != null ? cp.phase_no : '?')
+    .replace('{n}', cp.file_count != null ? cp.file_count : 0)
+    .replace('{when}', cp.saved_at || '');
+  txt.textContent = msg;
+  box.style.display = 'block';
+  _cmdMsg('');
+}
+function cancelResume(){
+  const box = document.getElementById('resume-confirm');
+  if (box) box.style.display = 'none';
+}
+async function startWithResume(resume){
+  cancelResume();
+  await _doStart(resume);
+}
+async function _doStart(resume){
+  try {
+    const r = await fetch('/api/start', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ resume: !!resume }) });
     const d = await r.json();
-    if (d && d.ok) _cmdMsg(t('web.home.msg.start_ok'), 'var(--ok)');
+    if (d && d.ok) _cmdMsg(t(resume ? 'web.home.msg.resume_ok' : 'web.home.msg.start_ok'), 'var(--ok)');
     else _cmdMsg(t('web.home.msg.start_ng'), 'var(--warn)');
     reloadStatus();
   } catch(e){ _cmdMsg(t('web.home.msg.start_fail') + ': ' + e, 'var(--err)'); }
