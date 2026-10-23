@@ -196,6 +196,15 @@
 - **実装 (v1.14.1)**: `Device.measure_folder_strict()` (実測 失敗 を `None` で 返す 厳密 版) と `Device.wipe_folder_contents()` (削除 → 実測 → 復旧 → 再試行) を 追加 し 、 `POST /api/device/delete_uploaded` を 検証 ベース に 書き換え まし た 。 削除 前 / 後 の 端末 空き 容量 も ログ と 応答 に 追加 。
 - **バージョン更新 (v1.14.1)**: `settings.APP_VERSION` を `1.14.0` → `1.14.1` に 変更。
 
+### v1.14.5 — 全送信完了 の 明示 ・ 終了時 の 端末 復元 統一 ・ 統計 の 「残りファイル数」
+
+- **全部 送信 済み の 明示 (v1.14.5)**: 転送 対象 が 0 件 (未送信 なし) で 終わっ た とき 、 ホーム 画面 の バナー を 「バックアップ 完了」 に 、 サブ 文言 を 「未送信 は あり ませ ん」 に 切り替え ます 。 従来 は 「成功 0 / スキップ 0 / 失敗 0」 と 表示 さ れ 、 完了 し た の か 失敗 し た の か 分か り にくい 状態 で し た (新 i18n キー `sync.note.all_sent` / `web.home.banner.all_sent` / `web.home.all_sent_note`)。
+- **終了時 の 端末 復元 を 統一 (v1.14.5)**: 正常 完了 ・ 未送信 0 件 ・ 保護 停止 (電池 / 温度 / 容量) ・ ユーザー 停止 ・ 例外 の すべて の 終了 経路 で 「輝度 復元 → 画面 OFF」 を 実行 する 共通 ヘルパー `device/ui.py::restore_phone_state()` を 新設 し まし た 。 `sync_flow.py` の `finally` 、 `ui_web/main.py` の 例外 経路 ・ 停止 ボタン から 呼び 、 どの 経路 で 終わっ て も 端末 が 点灯 放置 に なら ない よう に し ま し た 。
+- **統計 に 「残りファイル数」 を 追加 (v1.14.5)**: 統計 ページ に 「🧹 残りファイル数」 の 折れ線 グラフ を 追加 し まし た 。 削除 まで 完了 し た もの を 処理 完了 と し て 、 残り 枚数 が 減っ て いく 推移 を 表示 し 、 期間 開始 時点 の 処理必要数 を 灰色 の 基準線 で 示し ます 。 API `/api/stats/timeseries` に `remaining` / `remaining_now` / `required_total` を 追加 。
+- **削除 完了 時刻 の 記録 (v1.14.5)**: Phase 7 (端末 削除) の 通常 削除 が `files.deleted_at` を 更新 し て い な かっ た ため (142,712 件 中 1 件 の み)、 残り ファイル数 の 推移 を 過去 に さかのぼっ て 復元 でき ませ んで し た 。 `update_phone_delete_state()` で `DONE` 時 に `deleted_at` を 記録 する よう に 修正 し ま し た (FAILED 等 は 既存 値 を 保持)。 過去 分 は 復元 でき ない ため 、 グラフ は 次回 稼働 以降 から 正確 に 蓄積 さ れ ます 。
+- **関連 i18n キー (v1.14.5)**: `web.stats.chart.remain` / `web.stats.series.remain` / `web.stats.series.required` / `web.stats.remain.note` / `web.stats.hint.remain` を `lang/ja.py` と `lang/en.py` に 追加。
+- **バージョン 更新 (v1.14.5)**: `settings.APP_VERSION` を `1.14.4` → `1.14.5` に 変更。
+
 ### v1.14.4 — 実行 終了 時 の NameError を 修正 (フェーズ サマリ の tr 未 import)
 
 - **フェーズ サマリ 表示 の `NameError` を 修正 (v1.14.4)**: `core/util.py::print_phase_summary()` が 見出し 文言 に `tr()` を 使っ て い る の に `tr` を import し て い なかっ た ため 、 Web UI から 開始 した 実行 は 転送 完了 後 の サマリ 表示 で 必ず `NameError: name 'tr' is not defined` に なり 、 転送 自体 が 正常 に 終わっ て い て も 実行 全体 が ERROR 扱い に なっ て い まし た (転送 対象 0 件 で 取り残し 復旧 のみ の 実行 で は 「成功 0 / スキップ 0 / 失敗 0」 の まま エラー 表示)。 `core/util.py` に `from nas2gp.core.i18n import tr` を 追加 し まし た (i18n は util を 参照 し ない ため 循環 参照 に は なり ま せ ん)。 v1.8.0 の パッケージ 再編 以降 に 潜在 し て い た もの で 、 v1.14.3 の 変更 と は 無関係 です 。

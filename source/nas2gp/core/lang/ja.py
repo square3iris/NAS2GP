@@ -52,7 +52,7 @@ WORDS = {
     # ------------------------------------------------------------
     # Phase 3 NEW - worker/sync_flow.py
     # ------------------------------------------------------------
-    "sync.warn.no_transfer_files": "転送対象ファイルはありません。",
+    "sync.note.all_sent": "バックアップ完了: 未送信のファイルはありません。",
     "sync.err.db_local_missing":    "LOCAL FILE NOT FOUND (DB乖離) : {local_path}",
 
     # ------------------------------------------------------------
@@ -606,6 +606,7 @@ WORDS = {
     "web.stats.chart.battery": "🔋 端末の電池残量",
     "web.stats.chart.temp": "🌡️ 端末の温度",
     "web.stats.chart.free": "💾 端末の空き容量",
+    "web.stats.chart.remain": "🧹 残りファイル数 (削除完了で減少)",
     "web.stats.chart.empty": "この期間のデータがありません。",
     "web.stats.series.volume": "転送量",
     "web.stats.series.images": "写真",
@@ -614,11 +615,15 @@ WORDS = {
     "web.stats.series.battery": "電池残量",
     "web.stats.series.temp": "温度",
     "web.stats.series.free": "空き容量",
+    "web.stats.series.remain": "残り",
+    "web.stats.series.required": "処理必要数",
+    "web.stats.remain.note": "処理必要数 {req} 件 → 現在 残り {now} 件",
     "web.stats.unit.items": "件",
     "web.stats.avg.label": "平均",
     "web.stats.avg.none": "—",
     "web.stats.avg.summary": "期間平均 — 転送量 {vol} ・ 速度 {speed} MB/s ・ 空き容量 {free} GB ・ 電池 {battery}% ・ 温度 {temp}℃ ・ 件数 {counts} 件/区間",
     "web.stats.hint.counts": "件数グラフは、転送完了時刻を記録した分のみ集計します（この機能の追加前に転送した分は含まれません）。",
+    "web.stats.hint.remain": "残りファイル数グラフは、削除完了時刻を記録した分のみ復元します（この機能の追加前に削除した分は含まれないため、期間開始時点の値は目安です）。",
     "web.stats.hint.health": "電池・温度・空き容量は約10分ごとの記録を集約して表示します（電池は平均、温度は最高、空き容量は最小）。同期を停止していた期間は記録がありません。",
     "web.stats.sort.id": "登録順",
     "web.stats.sort.id_desc": "登録 逆順",
@@ -712,6 +717,7 @@ WORDS = {
     "web.home.dev.auto": "30秒ごとに自動更新 (グレー=未接続 / グリーン=接続中)",
     "web.home.banner.idle": "停止中",
     "web.home.banner.running": "実行中",
+    "web.home.banner.all_sent": "バックアップ完了",
     "web.home.stat.batch": "バッチ",
     "web.home.stat.remain": "残りファイル",
     "web.home.stat.speed": "平均速度",
@@ -735,6 +741,7 @@ WORDS = {
     "web.home.eta_fmt": "残り {eta}",
     "web.home.stop_after": "⏹ 今回のバッチ終了後に停止します",
     "web.home.final_fmt": "最終: 成功 {ok} / スキップ {skip} / 失敗 {fail}",
+    "web.home.all_sent_note": "未送信はありません",
     "web.home.counts_fmt": "成功 {ok} / スキップ {skip} / 失敗 {fail}",
     "web.home.dur_hm": "{h}時間{m}分",
     "web.home.dur_ms": "{m}分{s}秒",

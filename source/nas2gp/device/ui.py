@@ -433,6 +433,30 @@ def restore_brightness():
         return False
 
 
+def restore_phone_state():
+    """稼働 終了 / 停止 / エラー 時 に 端末 を 元 の 状態 へ 戻す (輝度 復元 → 画面 OFF)。
+
+    v1.14.5: 終了 経路 (正常 完了 / 未送信 0 件 / 保護 停止 / ユーザー 停止 / 例外) で
+    必ず 同じ 順序 の 後始末 を 行う ため の 共通 ヘルパー 。 減光 を 解除 し て から
+    画面 を 消灯 する (逆 順 だ と 減光 が 残る 端末 が ある)。 失敗 は 内部 で 潰す ため 、
+    呼び出し 側 の 終了 処理 を 止め ない 。
+
+    v1.14.5: Shared helper that returns the device to its original state on any exit
+    path (normal completion / nothing-to-send / protection stop / user stop /
+    exception): restore brightness, then turn the screen off (the reverse order can
+    leave the dim active on some devices). Failures are swallowed so it never blocks
+    the caller's cleanup.
+    """
+    try:
+        restore_brightness()
+    except Exception:
+        pass
+    try:
+        keep_screen_off(force=True)
+    except Exception:
+        pass
+
+
 atexit.register(screen_off)
 # atexit は LIFO 実行のため 、 後 に 登録 し た restore_brightness が 先 に 走る
 # (輝度 を 戻し て から 画面 を 消灯)。

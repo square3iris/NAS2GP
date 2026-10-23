@@ -152,7 +152,13 @@ function _bannerSub(snap, ph, running){
     if (lf) parts.push(lf);
   }
   const counts = {ok: snap.success ?? 0, skip: snap.skipped ?? 0, fail: snap.failed ?? 0};
-  if (!running && ph !== 'ERROR'){
+  // v1.14.5: 未送信 が 1 件 も 無い 完了 で は 「最終: 成功 0 / ...」 の 代わり に
+  //   「未送信はありません」 を 出す (全部 送信 済み を 一目 で 分かる よう に する)。
+  // v1.14.5: On an "all sent" completion, show "nothing left to send" instead of
+  //   the "Last: OK 0 / ..." counters so the state is obvious at a glance.
+  if (!running && ph === 'DONE' && snap.all_sent){
+    parts.push(t('web.home.all_sent_note'));
+  } else if (!running && ph !== 'ERROR'){
     parts.push(tf('web.home.final_fmt', counts));
   } else {
     parts.push(tf('web.home.counts_fmt', counts));
@@ -188,7 +194,9 @@ function render(snap){
   let kind = 'idle', title = t('web.home.banner.idle');
   if (ph === 'ERROR'){ kind = 'err'; title = t('web.phase.error'); }
   else if (ph === 'STOP_REQUESTED'){ kind = 'warn'; title = t('web.phase.stop_requested'); }
-  else if (ph === 'DONE'){ kind = 'done'; title = t('web.phase.done'); }
+  // v1.14.5: 全部 送信 済み で の 完了 は 「バックアップ 完了」 と 明示 する 。
+  // v1.14.5: A completion with nothing left unsent says "Backup complete".
+  else if (ph === 'DONE'){ kind = 'done'; title = snap.all_sent ? t('web.home.banner.all_sent') : t('web.phase.done'); }
   else if (ph === 'ADB_RECONNECT' || ph === 'BATTERY_WAIT' || ph === 'TEMP_WAIT'){ kind = 'warn'; title = PHASE_LABEL[ph] || t('web.home.banner.running'); }
   // v1.14.2: 保護 停止 (電池 / 温度 / 容量 不足) は エラー と 区別 し 、 停止 と して 表示 する 。
   // v1.14.2: A protection stop (battery / temp / storage) is shown as "stopped", not an error.

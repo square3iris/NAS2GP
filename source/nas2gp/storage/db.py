@@ -503,14 +503,20 @@ class Database(
         state
     ):
 
+        # v1.14.5: 削除 完了 時刻 を deleted_at に 記録 する (統計 の 「残りファイル数」 推移 用)。
+        #   完了 以外 (FAILED 等) は 既存 値 を その まま 残す 。
+        # v1.14.5: record the deletion-complete time into deleted_at (used by the stats
+        #   "remaining files" trend). Non-DONE states keep the existing value.
         self.cursor.execute("""
         UPDATE files
         SET
             phone_delete_state=?,
+            deleted_at=CASE WHEN ?='DONE' THEN datetime('now', 'localtime') ELSE deleted_at END,
             updated_at=datetime('now', 'localtime')
         WHERE path=?
         """, (
             state,
+            str(state),
             str(path)
         ))
 

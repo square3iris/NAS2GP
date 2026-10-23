@@ -205,7 +205,8 @@ def _pad(s, width, fill=" "):
     return s + fill * (width - len(s))
 
 
-def publish_phase(phase=None, detail="", title=None, phase_no=None, total_phases=None, batch_idx=None):
+def publish_phase(phase=None, detail="", title=None, phase_no=None, total_phases=None, batch_idx=None,
+                  all_sent=None):
     """v1.7.15: 現在 の 処理 フェーズ を Web UI / GUI へ 通知 する。
     コンソール に 出す 見出し と 同じ 文言 (title) を 載せ る こと で 、
     画面 表示 と コンソール を 常 に 一致 さ せ る ため の 共有 ヘルパー。
@@ -235,6 +236,12 @@ def publish_phase(phase=None, detail="", title=None, phase_no=None, total_phases
                 payload["phase_total"] = int(total_phases)
         if batch_idx is not None:
             payload["batch_idx"] = int(batch_idx)
+        # v1.14.5: 未送信 が 1 件 も 無い 状態 で 終わっ た こと を ホーム 画面 へ 伝える
+        #   (バナー を 「バックアップ 完了 / 未送信 は あり ませ ん」 に 切り替える ため)。
+        # v1.14.5: Tell the home screen that nothing was left unsent (switches the
+        #   banner to "Backup complete / nothing left to send").
+        if all_sent is not None:
+            payload["all_sent"] = bool(all_sent)
         if payload:
             _events.publish(_events.SYNC_PHASE_CHANGED, payload)
     except Exception:

@@ -11,6 +11,7 @@ from nas2gp.core.util import (
     print_step,
     print_batch_header,
     print_phase_summary,
+    publish_phase,
 )
 from nas2gp.core.i18n import tr
 from nas2gp.core.util import smb_session_keep_alive
@@ -108,7 +109,15 @@ class Sync:
                 except Exception:
                     _has_leftover = False
                 if not _has_leftover:
-                    print_step(tr("sync.warn.no_transfer_files"))
+                    # v1.14.5: 未送信 1 件 も 無い (= 全部 送信 済み) こと を ホーム 画面 で
+                    #   明確 に 分かる よう に する 。 コンソール 文言 と 併せ て all_sent を
+                    #   通知 し 、 バナー を 「バックアップ 完了 / 未送信 は あり ませ ん」 に
+                    #   切り替える 。
+                    # v1.14.5: Make "everything already sent" explicit on the home screen.
+                    #   Notify all_sent along with the console line so the banner can say
+                    #   "Backup complete / nothing left to send".
+                    print_step(tr("sync.note.all_sent"))
+                    publish_phase(phase="DONE", detail=tr("sync.note.all_sent"), all_sent=True)
                     return 0, 0, 0
 
             norm_files = self.uploader._normalize(files)
@@ -135,24 +144,23 @@ class Sync:
                 self.db.close()
             except Exception:
                 pass
-            # 終了時 に 画面 輝度 を 元 の 値 へ 復元
-            # Restore the original screen brightness at the end of the run.
-            try:
-                from nas2gp.device.ui import restore_brightness
-                restore_brightness()
-            except Exception:
-                pass
+            # 終了 時 は 端末 を 元 の 状態 へ 戻す (輝度 復元 → 画面 OFF)。
             # 稼働 終了 後 も プロセス (Web UI) は 生き 続ける ため 、 端末 画面 を 点灯 した
             #   まま 放置 する と 待機 中 に 電池 を 食う (長時間 評価 で 電池 切れ に 至っ た)。
-            #   ここ で 明示 的 に 消灯 する 。 保護 停止 (電池 低下 / 容量 不足) や ユーザー 停止 で
-            #   終わっ た 場合 も この finally を 通る 。 次 の 稼働 で 必要 な と き は wakeup さ れる 。
-            # The process (Web UI) keeps running after a run, so leaving the device screen
-            #   lit drains the battery while idle (it ran flat on a long evaluation). Turn
-            #   it off explicitly here. Protection stops (low battery / no space) and user
-            #   stops also pass through this finally; the next run wakes the screen when needed.
+            #   正常 完了 / 未送信 0 件 / 保護 停止 (電池 低下 / 容量 不足) / ユーザー 停止 /
+            #   例外 の すべて が この finally を 通る 。 次 の 稼働 で 必要 な と き は wakeup さ れる 。
+            # v1.14.5: 順序 と 内容 は device/ui.py の 共通 ヘルパー に 集約 し 、 エラー 経路 や
+            #   停止 操作 から も 同じ 後始末 を 呼べる よう に し た 。
+            # Return the device to its original state at the end of the run (brightness
+            #   restore -> screen off). The process (Web UI) keeps running after a run, so
+            #   leaving the screen lit drains the battery while idle. Every exit path
+            #   (completion / nothing-to-send / protection stop / user stop / exception)
+            #   passes through this finally; the next run wakes the screen when needed.
+            # v1.14.5: The order and content live in one shared helper in device/ui.py so
+            #   the error path and the stop action can run the same cleanup.
             try:
-                from nas2gp.device.ui import keep_screen_off
-                keep_screen_off(force=True)
+                from nas2gp.device.ui import restore_phone_state
+                restore_phone_state()
             except Exception:
                 pass
 

@@ -139,6 +139,9 @@ class WebSyncRuntime:
             # v1.7.18: ADB 復旧不能 (切断 で 安全 停止) を 通知 する 永続 アラート 文言。
             # v1.7.18: Persistent alert text for an unrecoverable ADB state (safe stop).
             "adb_alert": "",
+            # v1.14.5: 未送信 が 1 件 も 無い 状態 で 完了 した か (バナー 文言 の 切替 用)。
+            # v1.14.5: Whether the run finished with nothing left unsent (banner wording).
+            "all_sent": False,
         }
         self.logs: List[Dict[str, Any]] = []
         self.config: Optional[Dict[str, Any]] = None
@@ -272,6 +275,10 @@ class WebSyncRuntime:
                     # (used to detect batch switches and reset).
                     if d.get("batch_idx") is not None:
                         self.state["phase_batch"] = int(d["batch_idx"])
+                    # v1.14.5: 「未送信 なし」 の 通知 を 取り込む (ホーム の バナー 文言 切替)。
+                    # v1.14.5: Capture the "nothing left unsent" notification (banner wording).
+                    if d.get("all_sent") is not None:
+                        self.state["all_sent"] = bool(d["all_sent"])
 
             def _on_log_capture(level: str, message: str, ts=None, **kwargs):
                 self._append_log(level, message, ts)
@@ -370,6 +377,9 @@ class WebSyncRuntime:
                 self.state["phase_total"] = None
                 self.state["phase_batch"] = None
                 self.state["stop_after_batch"] = False
+                # v1.14.5: 新規 実行 時 は 前回 の 「全部 送信 済み」 表示 を 引き継が ない 。
+                # v1.14.5: Do not carry over the previous "all sent" display into a new run.
+                self.state["all_sent"] = False
             # v1.7.15: 前回 の 停止 要求 を クリア
             # v1.7.15: Clear the previous stop request.
             try:
@@ -461,6 +471,18 @@ class WebSyncRuntime:
                 self.state["finished_at"] = self.state["finished_at"] or time.strftime("%Y-%m-%d %H:%M:%S")
                 if self.state.get("phase") not in {"ERROR", "STOPPED"}:
                     self.state["phase"] = "ERROR"
+            # v1.14.5: upload_all() に 入る 前 (DB 接続 等) で 失敗 し た 場合 、 フロー 側 の
+            #   finally を 通ら ない ため 端末 が 減光 / 点灯 の まま 残る 。 ここ で も
+            #   「輝度 復元 → 画面 OFF」 を 実行 する (upload_all 内 の 失敗 で は 二重 に
+            #   なる が 、 輝度 復元 は 未変更 なら 何 も せ ず 、 消灯 の 再送 も 無害)。
+            # v1.14.5: A failure before upload_all() (e.g. DB connect) skips the flow's
+            #   finally, leaving the device dim / lit. Run the same cleanup here too (it
+            #   is a no-op duplicate when upload_all already handled it).
+            try:
+                from nas2gp.device.ui import restore_phone_state
+                restore_phone_state()
+            except Exception:
+                pass
             raise
 
     def start(self, cfg: Dict[str, Any], resume: bool = False):
@@ -491,6 +513,23 @@ class WebSyncRuntime:
             pass
         with self.lock:
             self.state["phase"] = "STOP_REQUESTED"
+            # 実行 スレッド が 生き て いる か を ロック 内 で 判定 する (ADB を 伴う 後始末 は
+            #   ロック の 外 で 行い 、 状態 API を ブロック し ない)。
+            # Decide inside the lock whether the worker is still alive (the ADB cleanup
+            #   runs outside so it never blocks the status API).
+            _alive = bool(self.thread is not None and self.thread.is_alive())
+        # v1.14.5: 実行 スレッド が 既に 終わっ て いる 場合 、 停止 要求 だけ で は 終了 処理
+        #   (輝度 復元 / 消灯) が 走ら ない ため 、 ここ で 端末 を 元 の 状態 へ 戻す 。
+        #   実行 中 は フロー 側 の finally が 同じ 後始末 を 行う 。
+        # v1.14.5: When the worker already ended, a stop request alone never runs the
+        #   cleanup, so restore the device here. While running, the flow's own finally
+        #   performs the same cleanup.
+        if not _alive:
+            try:
+                from nas2gp.device.ui import restore_phone_state
+                restore_phone_state()
+            except Exception:
+                pass
 
     def stop_after_batch(self):
         """v1.7.15: 「今回のバッチで終了」 。 実行 中 の バッチ を 完了 し て から 終了 する。

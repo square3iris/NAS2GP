@@ -365,6 +365,7 @@ class FileView:
         """統計 グラフ 用 の 時系列 集計 を 返す 。
         - 転送量 (bytes) と 実効速度 (bytes/s): batch_history (過去分 も 表示 可)
         - 写真 / 動画 の 枚数: files.transferred_at (v1.7.19 以降 の 記録)
+        - 残りファイル数: files.deleted_at (v1.14.5 以降 の 削除完了 記録。 過去分 は 不明)
         欠損 バケット は 0 埋め し 、 x 軸 が 連続 に なる よう 揃え る 。
         v1.12.0: start/end ('YYYY-MM-DD') を 渡す と その 日付 範囲 を 表示 する (範囲 指定 優先)。
         1日 以内 は 1時間 区切り 、 それ 以上 は 1日 区切り に 自動 で なる 。
@@ -372,6 +373,8 @@ class FileView:
         Return time-series aggregates for the stats graphs:
         - volume (bytes) / effective speed (bytes/s): from batch_history (covers past data)
         - image / video counts: from files.transferred_at (recorded since v1.7.19)
+        - remaining file count: from files.deleted_at (deletion-complete records since
+          v1.14.5; past data is unavailable)
         Missing buckets are zero-filled so the x-axis stays contiguous.
         v1.12.0: passing start/end ('YYYY-MM-DD') charts that explicit date range
         (it takes precedence). Ranges up to 1 day bucket hourly, longer ranges daily."""
@@ -474,6 +477,44 @@ class FileView:
         except Exception:
             pass
 
+        # 3) 残りファイル数 (files.deleted_at; v1.14.5 以降 の 削除完了 記録 から 復元)。
+        #    t 時点 の 残り = 現在 の 残り + 「t より 後 に 削除 完了 した 件数」。
+        #    期間 開始 時点 の 値 (= 処理必要数) は required_total として 返す 。
+        # 3) Remaining files (reconstructed from the deletion-complete records written
+        #    to files.deleted_at since v1.14.5).
+        #    remaining(t) = remaining_now + (files deleted after t);
+        #    required_total is the period's starting value (the required count).
+        remaining = [None] * len(keys)
+        remaining_now = None
+        required_total = None
+        try:
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM files WHERE COALESCE(phone_delete_state,'PENDING')!='DONE'"
+            )
+            remaining_now = int(cur.fetchone()["n"] or 0)
+            cur.execute(
+                f"""
+                SELECT strftime('{fmt}', deleted_at) AS bucket, COUNT(*) AS n
+                FROM files
+                WHERE deleted_at IS NOT NULL AND deleted_at >= ?
+                GROUP BY bucket
+                """,
+                (since,),
+            )
+            per_bucket = {}
+            deleted_in_range = 0
+            for r in cur.fetchall():
+                c = int(r["n"] or 0)
+                per_bucket[r["bucket"]] = c
+                deleted_in_range += c
+            required_total = remaining_now + deleted_in_range
+            cum = 0
+            for i, k in enumerate(keys):
+                cum += per_bucket.get(k, 0)
+                remaining[i] = remaining_now + (deleted_in_range - cum)
+        except Exception:
+            pass
+
         return {
             "ok": True,
             "range": str(range_key or "24h"),
@@ -485,4 +526,7 @@ class FileView:
             "speed_bps": speed_bps,
             "images": images,
             "videos": videos,
+            "remaining": remaining,
+            "remaining_now": remaining_now,
+            "required_total": required_total,
         }
