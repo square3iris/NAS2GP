@@ -333,16 +333,16 @@ class Uploader:
 
         # ====================================================================
         # v1.7.18: バッテリー監視 + ADB 切断復旧ゲート (長時間 評価 向け 安全 機構)
-        #   - 低残量 (かつ 非充電) なら 充電 / 回復 まで 待機 (上限 あり)
+        #   - 低残量 なら 回復 まで 待機 (上限 あり / 充電 状態 は 判定 に 使わ ない)
         #   - デバイス 不在 なら 最大 ADB_RECOVERY_WAIT_SEC 秒 粘って 再接続
         #   - どちらも 上限 超過 / 復旧 不能 なら この バッチ の FAILED を PENDING に
         #     戻し て 安全 停止 (次回 実行 で 自動 再送)
         # v1.7.18: Battery monitoring + ADB disconnect recovery gate
-        #   - Pause while the battery is low (and not charging), up to a limit
+        #   - Pause while the battery is low, up to a limit
         #   - On device absence, retry reconnection for up to ADB_RECOVERY_WAIT_SEC
         #   - On limit/timeout, revert this batch's FAILED rows to PENDING and stop safely
         # ====================================================================
-        _bat_state = {"last_check": 0.0, "last_level": None}
+        _bat_state = {"last_check": 0.0}
 
         def _safe_int(v, default):
             try:
@@ -363,9 +363,22 @@ class Uploader:
             except Exception:
                 return str(v)
 
-        def _safe_stop_batch(batch, message: str):
+        def _screen_off_idle():
+            """v1.14.2: UI を 使わ ない 区間 (転送 待ち / 電池 待機 中) は 画面 を OFF に 保つ 。
+            高頻度 で 呼ん でも 再送 は 間引か れ る (`ui.keep_screen_off`)。
+            v1.14.2: Keep the screen off while the UI is unused (waits). Safe to call
+            every tick; `ui.keep_screen_off` throttles the re-send."""
+            try:
+                from nas2gp.device.ui import keep_screen_off
+                keep_screen_off()
+            except Exception:
+                pass
+
+        def _safe_stop_batch(batch, message: str, level: str = "error"):
             """ADB 切断 等 で 続行 不能 な とき 、この バッチ の FAILED を PENDING に 戻し て 停止 要求 する 。
-            Revert this batch's FAILED rows to PENDING and request a stop when unable to continue."""
+            level: 保護 目的 (電池 / 温度) の 停止 は "warning" を 渡し 、 異常 系 は "error" の まま に する 。
+            Revert this batch's FAILED rows to PENDING and request a stop when unable to continue.
+            level: pass "warning" for protection stops (battery / temperature); anomalies stay "error"."""
             _reverted = 0
             try:
                 _reverted = int(self.db.revert_phone_transfer_failed_to_pending(
@@ -375,21 +388,28 @@ class Uploader:
                 _reverted = 0
             try:
                 from nas2gp.core.logger import Logger as _StopLg2
-                _StopLg2.error(f"{message} (PENDINGに戻した失敗件数={_reverted})")
+                _log_fn = _StopLg2.warning if level == "warning" else _StopLg2.error
+                _log_fn(f"{message} (PENDINGに戻した失敗件数={_reverted})")
             except Exception:
                 pass
             try:
-                _control.request_stop_now()
+                # v1.14.2: 保護 目的 (電池 / 温度) の 停止 は 理由 を 記録 し 、
+                #   ループ 先頭 の 終了 表示 を 「ユーザー 要求」 に し ない 。
+                # v1.14.2: mark protection stops (battery / temperature) so the
+                #   loop-exit message is not shown as a user request.
+                _control.request_stop_now(
+                    reason=(_control.REASON_PROTECTION if level == "warning" else "")
+                )
             except Exception:
                 pass
 
         def _battery_gate(force: bool = False):
-            """残量 が 閾値 未満 、 充電 中 で も 減少 中 、 または 本体 温度 が 上限 を 超え た とき 、
-            充電 / 冷却 まで 待機 する 。
+            """残量 が 閾値 未満 、 または 本体 温度 が 上限 を 超え た とき 、
+            回復 / 冷却 まで 待機 する 。 充電 状態 は 判定 に 使わ ない (表示 専用)。
             戻り値: "OK" (続行) / "STOPPED" (ユーザー 停止) / "TIMEOUT" (待機 上限 超過)。
-            Wait until charging / cooling when the battery is below the threshold, the
-            level is falling even though the device reports charging, or the body
-            temperature exceeds DEVICE_TEMP_LIMIT_C.
+            Wait until the level recovers / the device cools when the battery is below
+            the threshold or the body temperature exceeds DEVICE_TEMP_LIMIT_C.
+            The charging flag is display-only and never affects the decision.
             Returns "OK" / "STOPPED" / "TIMEOUT"."""
             try:
                 interval = float(getattr(_settings_module, "BATTERY_CHECK_INTERVAL_SEC", 600) or 0)
@@ -423,43 +443,33 @@ class Uploader:
                 except Exception:
                     return {}
 
-            def _level_state(_h):
-                """(残量, 充電中, 前回残量) を 返す 。 読め た 残量 は 状態 に 記録 する 。
-                Return (level, charging, previous level); a readable level is recorded."""
-                _lvl_i = _safe_int(_h.get("battery_level"), -1) if _h.get("battery_level") is not None else -1
-                _prev = _bat_state.get("last_level")
-                if _lvl_i >= 0:
-                    _bat_state["last_level"] = _lvl_i
-                return _lvl_i, _h.get("battery_charging"), _prev
+            def _level_of(_h):
+                """読める 残量 を 返す (読め ない とき は -1)。
+                Return the readable level (-1 when unreadable)."""
+                if _h.get("battery_level") is None:
+                    return -1
+                return _safe_int(_h.get("battery_level"), -1)
 
             def _temp_of(_h):
                 _v = _h.get("battery_temp_c")
                 return None if _v is None else _safe_float(_v, None)
 
-            def _rising(_lvl_i, _chg, _prev):
-                """充電 中 で 、 かつ 前回 より 残量 が 増え て い る か 。
-                True when charging and the level is higher than the previous reading."""
-                return bool(_chg is True and _prev is not None and _lvl_i > _prev)
-
-            def _level_ok(_lvl_i, _chg, _prev):
-                """続行 可 か 。 絶対下限 未満 は charge 状態 に 関係 なく 続行 し ない 。
-                Whether the run may continue. Below the absolute floor it never may,
-                and below the threshold it must at least be rising while charging."""
-                if 0 <= _lvl_i < crit:
-                    return False
-                if _lvl_i >= thr:
+            def _level_ok(_lvl_i):
+                """続行 可 か (残量 のみ で 判定)。 読め ない とき は 続行 する 。
+                Whether the run may continue, from the level alone (unreadable -> continue)."""
+                if _lvl_i < 0:
                     return True
-                return _rising(_lvl_i, _chg, _prev)
+                return _lvl_i >= thr
 
-            def _critical_stop(_lvl_i, _chg, _prev):
-                """絶対下限 まで 低下 し 、 かつ 回復 し て い ない → 即 安全停止。
-                At/below the absolute floor without recovery -> stop immediately."""
-                return bool(0 <= _lvl_i < crit and not _rising(_lvl_i, _chg, _prev))
+            def _critical_stop(_lvl_i):
+                """絶対下限 まで 低下 → 充電 状態 に 関係 なく 即 安全停止。
+                At/below the absolute floor -> stop immediately regardless of charging."""
+                return bool(0 <= _lvl_i < crit)
 
-            def _bat_bad(_lvl_i, _chg, _prev):
+            def _bat_bad(_lvl_i):
                 """残量 が 理由 で 待機 すべ き か (読め ない とき は 待機 し ない)。
                 Whether the battery requires a wait (an unreadable level does not)."""
-                return bool(_lvl_i >= 0 and not _level_ok(_lvl_i, _chg, _prev))
+                return bool(_lvl_i >= 0 and not _level_ok(_lvl_i))
 
             def _temp_bad(_temp_f, waiting=False):
                 """本体 温度 が 理由 で 待機 すべ き か 。 waiting 中 は ヒステリシス 判定 。
@@ -469,9 +479,9 @@ class Uploader:
                 return bool(_temp_f > (_temp_resume if waiting else _temp_limit))
 
             _h = _read_health()
-            _lvl_i, _chg, _prev = _level_state(_h)
+            _lvl_i = _level_of(_h)
             _temp_f = _temp_of(_h)
-            _bat_bad_i = _bat_bad(_lvl_i, _chg, _prev)
+            _bat_bad_i = _bat_bad(_lvl_i)
             _temp_bad_i = _temp_bad(_temp_f)
             if not _bat_bad_i and not _temp_bad_i:
                 return "OK"
@@ -485,8 +495,6 @@ class Uploader:
                 if _bat_bad_i:
                     if _lvl_i < crit:
                         _BatLg.error(tr("log.flow.battery_critical").format(level=_lvl_i, floor=crit))
-                    elif _chg is True:
-                        _BatLg.warning(tr("log.flow.battery_draining").format(level=_lvl_i, thr=thr))
                     else:
                         _BatLg.warning(tr("log.flow.battery_low").format(level=_lvl_i, thr=thr))
                 if _temp_bad_i:
@@ -496,10 +504,26 @@ class Uploader:
                 pass
 
             _waited = 0.0
-            _poll = 15.0
+            # v1.14.2: 待機 中 の 残量 読み直し 間隔 は 設定 値 (分) を 使う (既定 10分)。
+            #   温度 待機 は 冷却 を 早く 検知 する ため 従来 どおり 15秒 を 使う 。
+            #   いずれ も sleep を 1秒 刻み に 分割 し 、 停止 要求 に 待機 中 でも 即 応 する 。
+            # v1.14.2: battery re-check interval comes from the setting (minutes,
+            #   default 10). The temperature wait keeps 15 s to detect cooling soon.
+            #   The sleep is split into 1 s ticks so a stop request is honoured
+            #   immediately during the wait.
+            try:
+                _poll_bat = float(
+                    getattr(_settings_module, "BATTERY_WAIT_POLL_MIN", 10) or 10) * 60.0
+            except Exception:
+                _poll_bat = 600.0
+            if _poll_bat <= 0:
+                _poll_bat = 600.0
+            _poll_temp = 15.0
+            _tick = 1.0
             while True:
                 if _control.stop_now_requested():
                     return "STOPPED"
+                _poll = _poll_temp if _temp_bad_i else _poll_bat
                 _remain = max(0, int(wait_max - _waited)) if wait_max > 0 else 0
                 if _temp_bad_i:
                     _publish_phase(
@@ -512,19 +536,35 @@ class Uploader:
                         "BATTERY_WAIT",
                         tr("log.flow.battery_wait").format(level=_lvl_i, thr=thr, remain=_remain),
                     )
-                time.sleep(_poll)
+                _slept = 0.0
+                while _slept < _poll:
+                    if _control.stop_now_requested():
+                        return "STOPPED"
+                    # v1.14.2: 待機 中 は UI を 使わ ない ため 画面 を OFF に 保つ
+                    #   (充電 を 妨げ ない よう に する)。 再送 は 内部 で 間引か れ る 。
+                    # v1.14.2: Keep the screen off during the wait so it does not
+                    #   hinder charging (the re-send is throttled internally).
+                    _screen_off_idle()
+                    _step = min(_tick, _poll - _slept)
+                    time.sleep(_step)
+                    _slept += _step
                 _waited += _poll
                 _h = _read_health()
-                _lvl_i, _chg, _prev = _level_state(_h)
+                _lvl_i = _level_of(_h)
                 _temp_f = _temp_of(_h)
-                if _critical_stop(_lvl_i, _chg, _prev):
+                if _critical_stop(_lvl_i):
                     try:
                         from nas2gp.core.logger import Logger as _BatCritLg
                         _BatCritLg.error(tr("log.flow.battery_critical").format(level=_lvl_i, floor=crit))
                     except Exception:
                         pass
+                    # v1.14.2: 「待機中」 と 区別 できる よう 、 保護 停止 の フェーズ を 通知 する 。
+                    # v1.14.2: Publish a protection-stop phase so the Web home can show
+                    #   "stopped" instead of an error (distinct from the waiting phases).
+                    _publish_phase("STOPPED", tr("log.flow.battery_critical").format(
+                        level=_lvl_i, floor=crit))
                     return "TIMEOUT"
-                _bat_bad_i = _bat_bad(_lvl_i, _chg, _prev)
+                _bat_bad_i = _bat_bad(_lvl_i)
                 _temp_bad_i = _temp_bad(_temp_f, waiting=True)
                 if not _bat_bad_i and not _temp_bad_i:
                     try:
@@ -538,13 +578,17 @@ class Uploader:
                         pass
                     return "OK"
                 if wait_max > 0 and _waited >= wait_max:
+                    # v1.14.2: 保護 停止 (待機 上限 超過) の フェーズ を 通知 する 。
+                    # v1.14.2: Publish the protection-stop phase (wait limit exceeded).
                     try:
                         from nas2gp.core.logger import Logger as _BatNgLg
                         if _temp_bad_i:
-                            _BatNgLg.error(tr("log.flow.temp_timeout").format(
-                                min=round(wait_max / 60), temp=_fmt_temp(_temp_f)))
+                            _msg_ng = tr("log.flow.temp_timeout").format(
+                                min=round(wait_max / 60), temp=_fmt_temp(_temp_f))
                         else:
-                            _BatNgLg.error(tr("log.flow.battery_timeout").format(min=round(wait_max / 60)))
+                            _msg_ng = tr("log.flow.battery_timeout").format(min=round(wait_max / 60))
+                        _BatNgLg.error(_msg_ng)
+                        _publish_phase("STOPPED", _msg_ng)
                     except Exception:
                         pass
                     return "TIMEOUT"
@@ -636,6 +680,9 @@ class Uploader:
                     tr("log.flow.gc_start").format(pending=len(_gc_list), free=_gc_before_free)
                 )
                 _publish_phase("GC", tr("log.flow.gc_phase").format(n=len(_gc_list)))
+                # v1.14.2: GC の 削除 (ADB rm) は 画面 を 必要 と しない ため 消灯 する 。
+                # v1.14.2: GC deletion (adb rm) needs no screen, so turn it off.
+                _screen_off_idle()
                 try:
                     import time as _gc_t0
                     _t0 = _gc_t0.time()
@@ -706,13 +753,18 @@ class Uploader:
             # v1.7.15: Stop request ("stop after this batch" / immediate stop) -> exit the loop,
             #   treating previous batches as done (remaining work is reprocessed on the next run).
             if _control.stop_after_batch_requested() or _control.stop_now_requested():
+                # v1.14.2: 保護 停止 (電池 / 温度) と ユーザー 操作 を 区別 し て 表示 する 。
+                # v1.14.2: distinguish a protection stop (battery / temperature) from a user action.
+                _protect_stop = (_control.stop_now_reason() == _control.REASON_PROTECTION)
                 print()
-                print(tr("log.flow.stop_batch_line1"))
+                print(tr("log.flow.protect_stop_line1") if _protect_stop
+                      else tr("log.flow.stop_batch_line1"))
                 print(tr("log.flow.stop_batch_line2"))
                 try:
                     from nas2gp.core.logger import Logger as _StopLg
                     _StopLg.warning(
-                        tr("log.flow.stop_batch_log").format(
+                        tr("log.flow.protect_stop_log" if _protect_stop
+                           else "log.flow.stop_batch_log").format(
                             batch=batch_index, total=len(batches),
                             success=success, skipped=skipped, failed=failed)
                     )
@@ -780,7 +832,7 @@ class Uploader:
             # v1.7.18: Always check the battery before a batch (wait for charging when low).
             _bg_batch = _battery_gate(force=True)
             if _bg_batch == "TIMEOUT":
-                _safe_stop_batch(batch, tr("log.flow.battery_stop"))
+                _safe_stop_batch(batch, tr("log.flow.battery_stop"), level="warning")
                 break
             if _bg_batch == "STOPPED":
                 break
@@ -891,6 +943,9 @@ class Uploader:
                         _gc_rerun_deleted_fnames = set()
                         try:
                             if _gc_rerun_list:
+                                # v1.14.2: 再試行 の 削除 も 画面 を 必要 と しない ため 消灯 。
+                                # v1.14.2: the retry deletion needs no screen either.
+                                _screen_off_idle()
                                 _rerun_del = self.worker.delete_uploaded_files(
                                     [fn for (_p, fn) in _gc_rerun_list]
                                 ) or []
@@ -1046,6 +1101,15 @@ class Uploader:
                         )
                     except Exception:
                         pass
+                    # v1.14.2: 容量 不足 に よる 停止 を 「エラー」 で は なく 「停止」 と して
+                    #   ホーム に 表示 する ため 、 例外 を 投げる 前 に 停止 フェーズ を 通知 する
+                    #   (main.py は この フェーズ を ERROR に 上書き し ない)。
+                    # v1.14.2: Notify the stop phase before raising so the Web home shows
+                    #   "stopped" instead of an error (main.py will not overwrite it).
+                    try:
+                        _publish_phase("STOPPED", tr("log.flow.pre0_fatal"))
+                    except Exception:
+                        pass
                     raise RuntimeError(
                         f"DEVICE_STORAGE_INSUFFICIENT_FATAL: batch {batch_index}/{len(batches)} "
                         f"need={_need_gb:.2f}GB + margin={_margin_gb:.1f}GB > final_free={_free_gb:.2f}GB "
@@ -1174,6 +1238,11 @@ class Uploader:
                 pass
             _publish_phase("UPLOAD", tr("log.flow.phase_upload").format(batch=batch_index, n=len(batch)), phase_no=3, total_phases=7, batch_idx=batch_index)
             print(tr("log.flow.phase2_start").format(n=len(batch), gb=round(_need_gb,3)))
+            # v1.14.2: 転送 (push) は 画面 を 必要 と しない ため 、 開始 時 に 消灯 する
+            #   (開始 前 から 点灯 し て い た 場合 の 消費 を 抑える)。
+            # v1.14.2: push needs no screen, so turn it off at phase start (covers a
+            #   screen left on before the run started).
+            _screen_off_idle()
             # v1.13.9: 転送 フェーズ の 開始 点 を 保存 (落ち た とき に ここ から 再開)。
             # v1.13.9: Save the upload phase start point (resume point if the run dies here).
             if _bphase <= 3:
@@ -1238,7 +1307,7 @@ class Uploader:
                 #   (wait for charging when low and not charging).
                 _bg_file = _battery_gate(force=False)
                 if _bg_file == "TIMEOUT":
-                    _safe_stop_batch(batch, tr("log.flow.battery_stop"))
+                    _safe_stop_batch(batch, tr("log.flow.battery_stop"), level="warning")
                     break
                 if _bg_file == "STOPPED":
                     break
@@ -1453,6 +1522,14 @@ class Uploader:
                     _BkEnd.success(
                         tr("log.flow.phase5_ok").format(batch=batch_index, total=len(batches), rc=recovery_count, sec=round(backup_seconds,1))
                     )
+                elif _control.stop_now_requested():
+                    # v1.14.2: 電池 / 温度 の 保護 停止 や ユーザー 停止 で 確認 を 中断 し た
+                    #   だけ で 、 バックアップ 自体 の 失敗 で は ない ため NG 警告 は 出さ ない 。
+                    # v1.14.2: interrupted by a protection stop (battery / temperature) or a
+                    #   user stop -- not an actual backup failure, so do not log a NG warning.
+                    _BkEnd.info(
+                        tr("log.flow.phase5_interrupted").format(batch=batch_index, total=len(batches), rc=recovery_count, sec=round(backup_seconds,1))
+                    )
                 else:
                     _BkEnd.warning(
                         tr("log.flow.phase5_ng").format(batch=batch_index, total=len(batches), rc=recovery_count, sec=round(backup_seconds,1))
@@ -1520,6 +1597,10 @@ class Uploader:
                     self.db.update_google_photos_state(file_path, "DONE")
                 self.db.commit()
 
+                # v1.14.2: 削除 (ADB rm) は 画面 を 必要 と しない ため 、 直前 に 消灯 する
+                #   (受理 直前 の 状態 確認 で 点灯 し た まま 削除 に 入る の を 防ぐ)。
+                # v1.14.2: deletion (adb rm) needs no screen, so turn it off right before it.
+                _screen_off_idle()
                 deleted_files = self.worker.delete_uploaded_files(
                     [filename for _, filename in uploaded_files]
                 )

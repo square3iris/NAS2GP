@@ -13,7 +13,7 @@ import os as _os
 # 更新 する とき は この 1 箇所 だけ を 変更 し て ください 。
 # Product version: the single source of truth referenced by the Web UI, OpenAPI (/docs)
 # and diagnostics. When releasing, update only this one place.
-APP_VERSION = "1.14.1"
+APP_VERSION = "1.14.2"
 
 # --------------------------------------------
 # Work Root (v1.7.4 追加: 診断 / リセット など の 「DB ファイル 相対パス 解決」 を 共通化)
@@ -126,6 +126,13 @@ SCREEN_BRIGHTNESS_NIGHT = 0
 SCREEN_BRIGHTNESS_DEFAULT = 80
 SCREEN_OFF_TIMEOUT_MAX = 2147483647
 
+# v1.14.2: UI を 使わ ない 区間 (転送 待ち / 電池 待機 / バックアップ 確認 の 合間) は
+#   画面 を OFF に 保つ 。 点灯 した まま だ と 充電 が 進ま ず 、 長時間 運転 で 電池 回復
+#   待ち が 頻発 する ため 。 OFF に する と 従来 どおり の 減光 の み と なる 。
+# v1.14.2: keep the screen off while the UI is unused (transfer/battery waits and
+#   between backup polls). Set OFF to go back to dimming only.
+SCREEN_OFF_WHEN_IDLE = True
+
 
 # --------------------------------------------
 # Upload
@@ -198,25 +205,36 @@ ADB_FAILURE_POLICY = "pause_dialog"
 # FAILED rows are reverted to PENDING and the run stops safely.
 ADB_RECOVERY_WAIT_SEC = 300
 
-# バッテリー 残量 が これを 下回っ た ら 新規 転送 を 一時 停止 する (% )。
-#   充電 中 で あっ て も 残量 が 減少 し て いれ ば 「充電 が 追い つい て い ない」 と みなし 、
-#   この しきい値 を 下回っ た 時点 で 待機 / 安全停止 を 行う 。
-# Pause new transfers when the battery level drops below this value (%).
-#   Even while charging, a falling level means the charger cannot keep up,
-#   so falling below this threshold triggers the wait / safe-stop path.
-BATTERY_LOW_THRESHOLD_PCT = 20
+# 【復帰閾値】バッテリー 残量 が これを 下回っ た ら 新規 転送 を 一時 停止 し 、
+#   この 値 以上 に 回復 する まで 待機 する (% )。 充電 状態 (battery_charging) は
+#   表示 専用 と し 、 この 判定 に は 使わ ない 。
+#   「停止 閾値」 (BATTERY_CRITICAL_PCT) より 大きい 値 を 設定 する こと 。
+# [Resume threshold] Pause new transfers when the battery level drops below this
+#   value (%) and wait until it recovers to at least this level. The charging flag
+#   is display-only and is not used for this decision. Keep it above
+#   BATTERY_CRITICAL_PCT.
+BATTERY_LOW_THRESHOLD_PCT = 30
 
-# これを 下回っ た ら 充電 状態 に 関係 なく 直ち に 安全停止 する 絶対 下限 (% )。
+# 【停止 閾値】これを 下回っ た ら 充電 状態 に 関係 なく 直ち に 安全停止 する 絶対 下限 (% )。
 #   充電 中 でも 放電 が 続く 端末 で 電源 が 落ちる の を 防ぐ 最後 の 砦 。
-# Absolute floor (%): below this the run stops safely regardless of charging state,
-#   the last line of defence against the device powering off on a weak charger.
-BATTERY_CRITICAL_PCT = 10
+#   「復帰 閾値」 (BATTERY_LOW_THRESHOLD_PCT) より 小さく する こと 。
+# [Stop threshold] Absolute floor (%): below this the run stops safely regardless
+#   of charging state, the last line of defence against the device powering off on
+#   a weak charger. Keep it below BATTERY_LOW_THRESHOLD_PCT.
+BATTERY_CRITICAL_PCT = 15
 
 # 低残量 で 一時 停止 し た 後 、 充電 / 残量 回復 を 待つ 上限 秒数 (既定 3600 = 60分)。
 # これを 超える と 安全 停止 する (FAILED を PENDING に 戻す)。
 # Upper bound (sec) to wait for charging / recovery after pausing on low battery
 # (default 3600 = 60 min). Past this, the run stops safely (FAILED reverted to PENDING).
 BATTERY_WAIT_MAX_SEC = 3600
+
+# 回復 待ち の 間 に 残量 を 読み直す 間隔 (分 、 既定 10分)。 停止 要求 に は 待機 中 でも
+#   即 応 する (残量 の 読み取り のみ を この 間隔 に 間引く)。
+# How often to re-read the battery level while waiting for recovery (minutes,
+#   default 10). A stop request is still honoured immediately during the wait
+#   (only the battery reads are throttled to this interval).
+BATTERY_WAIT_POLL_MIN = 10
 
 # バッテリー 残量 を 監視 する 間隔 秒 (既定 600 = 10分)。各 バッチ 開始 前 に は 必ず 確認 する 。
 # Battery monitoring interval in seconds (default 600 = 10 min). Always checked before each batch.
@@ -290,18 +308,25 @@ MIN_BACKUP_THROUGHPUT_MBPS = 2.0
 
 # v1.11.1: 停滞 リスタート の しきい値 (連続 回数)。「バックアップ中」 が 監視 ループ で
 #   この 回数 連続 し た ら Google Photos を 再起動 して 立て直す 。 実時間 は 監視 間隔
-#   (BACKUP_CHECK_INTERVAL) に 依存 する (例: 15 回 × 8 秒 ≒ 120 秒)。 大容量 バッチ 時 は
+#   (BACKUP_CHECK_INTERVAL) に 依存 する (例: 5 回 × 30 秒 ≒ 150 秒)。 大容量 バッチ 時 は
 #   無進捗 タイムアウト に 比例 させ て 自動 で 緩和 さ れる (worker/backup_waiter.py)。
 #   0 以下 で 停滞 リスタート を 無効 化 。
+# v1.14.2: 既定 を 15 → 5 に 変更 (監視 間隔 8 → 30 秒 に 合わせ 、 停滞 判定 の 実時間
+#   150 秒 を 維持 する)。
 # v1.11.1: Stall-restart threshold (consecutive polls). Time is derived from
 #   BACKUP_CHECK_INTERVAL. Relaxed proportionally for large batches. <=0 disables.
-BACKUP_STALLED_LIMIT = 15
+# v1.14.2: default 15 -> 5 to keep the stall time at ~150 s with the new 30 s interval.
+BACKUP_STALLED_LIMIT = 5
 
-# 監視ループ間隔 (秒)。v1.11.1: config (config_loader) の 既定 8 に 合わせ て 一元化 した。
+# 監視ループ間隔 (秒)。v1.11.1: config (config_loader) の 既定 に 合わせ て 一元化 した。
 #   実行時 は config_ui.json の 値 が settings へ 上書き さ れる (Web / CLI 共通)。
-# Monitoring loop interval (sec). v1.11.1: unified to the config default (8); at
-#   runtime the config value overrides this constant for both Web UI and CLI.
-BACKUP_CHECK_INTERVAL = 8
+# v1.14.2: 既定 を 8 → 30 秒 に 変更 。 1 周期 = 確認 処理 (画面 ON + dump、数秒) +
+#   この 間隔 の ため 、 短 すぎる と 画面 の 点灯 時間 が 増え て 充電 を 妨げる 。
+#   無進捗 打ち切り は 時間 基準 (`last_progress_ts`) な ので 影響 し ない 。
+# Monitoring loop interval (sec). v1.11.1: unified to the config default; at runtime
+#   the config value overrides this constant for both Web UI and CLI.
+# v1.14.2: default 8 -> 30 s. The no-progress cutoff is time-based, so it is unaffected.
+BACKUP_CHECK_INTERVAL = 30
 
 
 # --------------------------------------------

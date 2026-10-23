@@ -1241,8 +1241,11 @@ class ADB:
                     out["battery_level"] = int(m2.group(1))
                 # 充電 状態 (v1.7.18): AC/USB/Wireless の いずれか が true 、
                 #   または status が 2(充電中)/5(満充電) なら 充電 中 と 判定 。
+                #   表示 用 のみ (ケーブル 接続 の 有無 を 示す だけ で 、 実際 に
+                #   充電 さ れ て い る か は 分から ない ため 判定 に は 使わ ない)。
                 # Charging state (v1.7.18): true when AC/USB/Wireless is powered,
-                #   or status is 2 (charging) / 5 (full).
+                #   or status is 2 (charging) / 5 (full). Display only; it merely
+                #   reports that a cable is connected, so it is not used for decisions.
                 try:
                     _charging = bool(_re_h.search(r"^\s*(?:AC|USB|Wireless)\s+powered:\s*true", bat, _re_h.MULTILINE))
                     if not _charging:

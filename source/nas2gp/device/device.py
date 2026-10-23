@@ -258,6 +258,13 @@ class Device:
           - (4) ADB_DEVICE_UNRECOVERABLE publish 直前 に 1 回 限り の extra_shell_probe を 実施 し 、
               偶発的 な 競合 で reconnect 失敗 し た ケース の 誤 publish を 防止
 
+        修正 (長時間 評価 の ADB 復旧 誤判定):
+          shell probe を ADB._probe_shell_true() (returncode == 0) に 一本化 し た 。 旧 実装 は
+          ADB.shell_output("true") の 戻り値 が 成功 で も 失敗 で も 常に str (失敗 時 は "" )
+          な の に 「isinstance(r, str) → 接続 OK」 と 判定 し て い た ため 、 端末 が 完全 に
+          切断 さ れ て い て も 常に 成功 扱い に な り 再接続 が 一度 も 走ら な かっ た
+          (再接続 ログ が 全て 0.0 秒 に なっ て い た 原因)。
+
         Ensures the ADB connection is alive and attempts reconnection if disconnected.
         v1.7.5/v1.7.9/v1.7.12 revisions: lightweight two-stage checks first, throttle-safe
         reconnect with a shell probe, and an aggressive mode for long-running scenarios.
@@ -278,36 +285,12 @@ class Device:
 
         try:
             try:
-                if ADB.has_device():
-                    if not shell_probe:
-                        return True
-                    try:
-                        r2 = ADB.shell_output("true", max_reconnect_retry=1)
-                        if isinstance(r2, str):
-                            return True
-                        if hasattr(r2, "returncode") and int(getattr(r2, "returncode", -1)) == 0:
-                            return True
-                    except Exception:
-                        pass
-                    try:
-                        r2b = ADB._probe_shell_true()
-                        if r2b:
-                            return True
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            try:
-                r = ADB.shell_output("true", max_reconnect_retry=1)
-                if isinstance(r, str):
-                    return True
-                if hasattr(r, "returncode") and int(getattr(r, "returncode", -1)) == 0:
+                if not shell_probe and ADB.has_device():
                     return True
             except Exception:
                 pass
             try:
-                rb = ADB._probe_shell_true()
-                if rb:
+                if ADB._probe_shell_true():
                     return True
             except Exception:
                 pass

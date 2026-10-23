@@ -31,9 +31,10 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "ADB_FAILURE_POLICY": "pause_dialog",
 
     "ADB_RECOVERY_WAIT_SEC": 300,
-    "BATTERY_LOW_THRESHOLD_PCT": 20,
-    "BATTERY_CRITICAL_PCT": 10,
+    "BATTERY_LOW_THRESHOLD_PCT": 30,
+    "BATTERY_CRITICAL_PCT": 15,
     "BATTERY_WAIT_MAX_SEC": 3600,
+    "BATTERY_WAIT_POLL_MIN": 10,
     "BATTERY_CHECK_INTERVAL_SEC": 600,
     "DEVICE_TEMP_LIMIT_C": 45.0,
 
@@ -43,9 +44,9 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "BACKUP_TIMEOUT": 600,
     "BACKUP_ABSOLUTE_MAX_SECONDS": 7200,
     "MIN_BACKUP_THROUGHPUT_MBPS": 2.0,
-    "BACKUP_CHECK_INTERVAL": 8,
+    "BACKUP_CHECK_INTERVAL": 30,
     "MIN_ACCEPT_ELAPSED_SECONDS": 15,
-    "BACKUP_STALLED_LIMIT": 15,
+    "BACKUP_STALLED_LIMIT": 5,
 
     "RESTART_PHOTOS_AFTER_PUSH": False,
     "CYCLE_GP_BEFORE_WAIT": True,
@@ -54,6 +55,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "ENABLE_NIGHT_LIGHT_MODE": True,
     "SCREEN_BRIGHTNESS_NIGHT": 0,
     "SCREEN_BRIGHTNESS_DEFAULT": 150,
+    "SCREEN_OFF_WHEN_IDLE": True,
 
     "LANGUAGE": "auto",
 
@@ -105,7 +107,7 @@ def _apply_runtime_settings(cfg: Dict[str, Any], silent: bool = False) -> None:
         "SCREEN_BRIGHTNESS_NIGHT", "SCREEN_BRIGHTNESS_DEFAULT",
         "ADB_RECOVERY_WAIT_SEC", "BATTERY_LOW_THRESHOLD_PCT",
         "BATTERY_CRITICAL_PCT",
-        "BATTERY_WAIT_MAX_SEC", "BATTERY_CHECK_INTERVAL_SEC",
+        "BATTERY_WAIT_MAX_SEC", "BATTERY_WAIT_POLL_MIN", "BATTERY_CHECK_INTERVAL_SEC",
         "DISCONNECT_HEARTBEAT_INTERVAL_SEC",
         "WEB_SERVER_PORT",
     ]
@@ -161,7 +163,7 @@ def _apply_runtime_settings(cfg: Dict[str, Any], silent: bool = False) -> None:
                 pass
 
     _bools = ["RESTART_PHOTOS_AFTER_PUSH", "ENABLE_NIGHT_LIGHT_MODE", "CYCLE_GP_BEFORE_WAIT",
-              "DISCONNECT_LOG_ENABLED"]
+              "DISCONNECT_LOG_ENABLED", "SCREEN_OFF_WHEN_IDLE"]
     for k in _bools:
         if k in cfg:
             try:

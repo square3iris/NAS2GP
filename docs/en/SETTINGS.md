@@ -57,9 +57,10 @@ On first launch or when loading an older file, missing keys are auto-filled with
   "ADB_RECOVER_MIN_INTERVAL_SEC": 45.0,
   "ADB_FAILURE_POLICY": "pause_dialog",
   "ADB_RECOVERY_WAIT_SEC": 300,
-  "BATTERY_LOW_THRESHOLD_PCT": 20,
-  "BATTERY_CRITICAL_PCT": 10,
+  "BATTERY_LOW_THRESHOLD_PCT": 30,
+  "BATTERY_CRITICAL_PCT": 15,
   "BATTERY_WAIT_MAX_SEC": 3600,
+  "BATTERY_WAIT_POLL_MIN": 10,
   "BATTERY_CHECK_INTERVAL_SEC": 600,
   "DEVICE_TEMP_LIMIT_C": 45.0,
   "DISCONNECT_LOG_ENABLED": true,
@@ -67,13 +68,14 @@ On first launch or when loading an older file, missing keys are auto-filled with
   "BACKUP_TIMEOUT": 600,
   "BACKUP_ABSOLUTE_MAX_SECONDS": 7200,
   "MIN_BACKUP_THROUGHPUT_MBPS": 2.0,
-  "BACKUP_CHECK_INTERVAL": 8,
+  "BACKUP_CHECK_INTERVAL": 30,
   "MIN_ACCEPT_ELAPSED_SECONDS": 15,
-  "BACKUP_STALLED_LIMIT": 15,
+  "BACKUP_STALLED_LIMIT": 5,
   "RESTART_PHOTOS_AFTER_PUSH": false,
   "LOG_VERBOSITY": "standard",
   "ENABLE_NIGHT_LIGHT_MODE": true,
   "SCREEN_BRIGHTNESS_NIGHT": 0,
+  "SCREEN_OFF_WHEN_IDLE": true,
   "WEB_SERVER_HOST": "0.0.0.0",
   "WEB_SERVER_PORT": 8000
 }
@@ -134,19 +136,22 @@ recovers within the cap, the run stops safely.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `BATTERY_LOW_THRESHOLD_PCT` | int | `20` | Threshold (%) treated as low battery. Pauses transfers when below it and the level is not rising even while charging |
-| `BATTERY_CRITICAL_PCT` | int | `10` | Absolute floor (%). Below it, with no recovery from charging, the run stops safely immediately regardless of the charging state |
+| `BATTERY_LOW_THRESHOLD_PCT` | int | `30` | Threshold (%) treated as low battery. Transfers pause while below it (the charging flag is not used) |
+| `BATTERY_CRITICAL_PCT` | int | `15` | Absolute floor (%). Below it, the run stops safely immediately regardless of the charging state |
 | `BATTERY_WAIT_MAX_SEC` | int | `3600` | Max seconds to wait on low battery / high temperature. Exceeding it stops the run safely |
+| `BATTERY_WAIT_POLL_MIN` | int | `10` | Interval (minutes) to re-read the level while waiting. Temperature waits stay at a fixed 15 s to detect cooldown quickly |
 | `BATTERY_CHECK_INTERVAL_SEC` | int | `600` | Interval (seconds) to check battery and temperature during transfers. Always checked before each batch |
 | `DEVICE_TEMP_LIMIT_C` | float | `45.0` | Body-temperature limit (C). Above it, new transfers pause and wait for cooldown. `0` disables it |
 
-> When a low battery is detected, transfers pause automatically and resume once charging or
-> recovery is detected. **If the level is lower than the previous reading even while charging**
-> (the charger cannot keep up) it is treated as a low battery, preventing the overnight case where
-> the device reports "charging" all night while the level keeps falling until it powers off.
+> When a low battery is detected, transfers pause automatically and resume once the level
+> recovers to the threshold. The decision uses **only the measured level**; the charging flag
+> (`battery_charging`) is display-only, because a connected cable does not guarantee that the
+> battery is actually charging.
 > If the wait exceeds `BATTERY_WAIT_MAX_SEC`, the batch's failed items revert to `PENDING` and the
 > run stops safely. The battery is also monitored on the same basis while waiting for the
-> Google Photos backup to finish (stage 6), and the run stops safely if the level falls.
+> Google Photos backup to finish (stage 6); below the threshold it **waits for recovery** instead
+> of stopping (unified with the wait-style gate in v1.14.2; a stop request is answered within
+> ~1 second even during the wait).
 
 > **Temperature protection (v1.14.0)**: when the body temperature exceeds `DEVICE_TEMP_LIMIT_C`,
 > new transfers pause and wait for cooldown. It **resumes automatically once the temperature drops
@@ -165,22 +170,27 @@ finish uploading to the Google Photos cloud.
 | `BACKUP_TIMEOUT` | int | `600` | Time treated as no-progress (seconds) |
 | `BACKUP_ABSOLUTE_MAX_SECONDS` | int | `7200` | Absolute cap on the backup wait (seconds); the final ceiling for large files |
 | `MIN_BACKUP_THROUGHPUT_MBPS` | float | `2.0` | Conservative assumed speed (MB/s) used to estimate the no-progress timeout from the batch size. `size / this value` becomes the lower bound of `BACKUP_TIMEOUT` (`0` disables). Prevents cutting off a single large file (e.g. a 4 GB video) whose remaining count never decreases |
-| `BACKUP_CHECK_INTERVAL` | int | `8` | Interval to read on-screen text (UIAutomator dump) (seconds) |
+| `BACKUP_CHECK_INTERVAL` | int | `30` | Interval to read on-screen text (UIAutomator dump) (seconds). One cycle is "check (screen ON + dump) + this interval", so a shorter value increases screen-on time and hinders charging. No-progress cutoff is time-based, so it is unaffected |
 | `MIN_ACCEPT_ELAPSED_SECONDS` | int | `15` | Minimum elapsed time before completion can be accepted (seconds) |
-| `BACKUP_STALLED_LIMIT` | int | `15` | Stall-restart threshold (consecutive polls). If "backing up" persists for this many polls, Google Photos is restarted to recover (actual time depends on `BACKUP_CHECK_INTERVAL`; e.g. 15 polls x 8s ~ 120s). Relaxed automatically in proportion to the no-progress timeout for large files (`0` disables) |
+| `BACKUP_STALLED_LIMIT` | int | `5` | Stall-restart threshold (consecutive polls). If "backing up" persists for this many polls, Google Photos is restarted to recover (actual time depends on `BACKUP_CHECK_INTERVAL`; e.g. 5 polls x 30s ~ 150s). Relaxed automatically in proportion to the no-progress timeout for large files (`0` disables) |
 | `RESTART_PHOTOS_AFTER_PUSH` | bool | `false` | Restart Google Photos only when a backup fails |
 
-### 3.6 Device screen (dimming during backup)
+### 3.6 Device screen (dimming during backup / turning off while idle)
 
 Settings that dim the device screen during a backup (sync) run to reduce glare and screen burn-in.
 It dims while the backup runs and restores the original brightness when it ends.
 Screen brightness is independent of screenshot capture (OCR) and input, so OCR-based
 backup detection and operations keep working even at brightness `0`.
 
+Turning the screen off while idle (sections that need no screen) is a separate setting, independent
+of dimming. During transfers, battery/temperature recovery waits, and between backup status checks,
+the screen is kept off. Google Photos keeps uploading even with the screen off.
+
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `ENABLE_NIGHT_LIGHT_MODE` | bool | `true` | Dim the screen during backup |
 | `SCREEN_BRIGHTNESS_NIGHT` | int | `0` | Brightness during backup (0-255). Restored to the original level automatically when the run ends |
+| `SCREEN_OFF_WHEN_IDLE` | bool | `true` | Turn the device screen off during sections that need no screen (transfers / battery & temperature recovery waits / between backup status checks). Google Photos keeps uploading even with the screen off. Recommended ON, because a device stopped on low battery charges much more slowly while the screen stays lit. When OFF, only dimming as before applies |
 
 ### 3.7 Analysis log (disconnect analysis + stats data)
 
@@ -352,9 +362,10 @@ The fastest approach is to watch the accept status live on the **Console** page.
 During long overnight runs, transfers can stop if the phone's battery runs out. The following
 settings provide automatic recovery and safe stop.
 
-- `BATTERY_LOW_THRESHOLD_PCT`: threshold treated as low battery (default 20%). Waits when below it and the level is not rising even while charging
-- `BATTERY_CRITICAL_PCT`: absolute floor (default 10%). Below it with no recovery, the run stops safely immediately regardless of the charging state
+- `BATTERY_LOW_THRESHOLD_PCT`: threshold treated as low battery (default 30%). Waits while below it (the charging flag is not used)
+- `BATTERY_CRITICAL_PCT`: absolute floor (default 15%). Below it the run stops safely immediately regardless of the charging state
 - `BATTERY_WAIT_MAX_SEC`: wait limit (default 3600 = 60 min). Exceeding it stops safely
+- `BATTERY_WAIT_POLL_MIN`: interval to re-read the level while waiting (default 10 min)
 - `BATTERY_CHECK_INTERVAL_SEC`: battery check interval during transfers (default 600 = 10 min)
 - `DEVICE_TEMP_LIMIT_C`: body-temperature limit (default 45 C). Above it, transfers pause and wait for cooldown, resuming 3 C lower. `0` disables it
 - `ADB_RECOVERY_WAIT_SEC`: recovery wait limit after a disconnect (default 300 = 5 min)

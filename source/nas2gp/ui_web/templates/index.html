@@ -69,6 +69,7 @@
 <script>
 const PHASE_LABEL = {
   IDLE:t('web.phase.idle'), DONE:t('web.phase.done'), ERROR:t('web.phase.error'),
+  STOPPED:t('web.phase.stopped'),
   STOP_REQUESTED:t('web.phase.stop_requested'),
   UPLOAD:t('web.phase.upload'), WAIT_BACKUP:t('web.phase.wait_backup'),
   GC:t('web.phase.gc'), DELETE:t('web.phase.delete'),
@@ -189,6 +190,9 @@ function render(snap){
   else if (ph === 'STOP_REQUESTED'){ kind = 'warn'; title = t('web.phase.stop_requested'); }
   else if (ph === 'DONE'){ kind = 'done'; title = t('web.phase.done'); }
   else if (ph === 'ADB_RECONNECT' || ph === 'BATTERY_WAIT' || ph === 'TEMP_WAIT'){ kind = 'warn'; title = PHASE_LABEL[ph] || t('web.home.banner.running'); }
+  // v1.14.2: 保護 停止 (電池 / 温度 / 容量 不足) は エラー と 区別 し 、 停止 と して 表示 する 。
+  // v1.14.2: A protection stop (battery / temp / storage) is shown as "stopped", not an error.
+  else if (ph === 'STOPPED'){ kind = 'warn'; title = PHASE_LABEL[ph] || t('web.home.banner.idle'); }
   else if (running){ kind = 'run'; title = PHASE_LABEL[ph] || t('web.home.banner.running'); }
   const banner = $('banner');
   if (banner) banner.className = 'banner ' + kind;
@@ -196,7 +200,9 @@ function render(snap){
   $('banner-sub').textContent = _bannerSub(snap, ph, running);
   const bp = $('banner-phase');
   if (bp){
-    const line = _phaseLine(snap);
+    // v1.14.2: 保護 停止 時 は 直前 の 工程 見出し (古い 情報) を 出さ ない 。
+    // v1.14.2: On a protection stop, hide the previous step heading (stale info).
+    const line = (ph === 'STOPPED') ? '' : _phaseLine(snap);
     bp.textContent = line;
     bp.style.display = line ? 'block' : 'none';
   }

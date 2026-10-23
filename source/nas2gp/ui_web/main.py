@@ -345,6 +345,11 @@ class WebSyncRuntime:
                 self.state["running"] = True
                 self.state["started_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
                 self.state["finished_at"] = None
+                # v1.14.2: 前回 の 終了 フェーズ (DONE / ERROR / STOPPED) を 引き継が ない
+                #   (再開 直後 に 「停止 (要確認)」 等 が 残る の を 防ぐ)。
+                # v1.14.2: Do not carry over the previous end phase (DONE / ERROR /
+                #   STOPPED) into a new run, avoiding a stale banner right after start.
+                self.state["phase"] = "IDLE"
                 self.state["success"] = 0
                 self.state["failed"] = 0
                 self.state["skipped"] = 0
@@ -421,7 +426,12 @@ class WebSyncRuntime:
                 result = sync.upload_all()
             except Exception as ex:
                 with self.lock:
-                    self.state["phase"] = "ERROR"
+                    # v1.14.2: 保護 停止 (電池 / 温度 / 容量 不足) は 既に STOPPED が
+                    #   通知 さ れ て いる ため 、 ERROR で 上書き し ない 。
+                    # v1.14.2: A protection stop (battery / temp / storage) already
+                    #   published STOPPED; do not overwrite it with ERROR.
+                    if self.state.get("phase") != "STOPPED":
+                        self.state["phase"] = "ERROR"
                     self.state["last_file"] = f"{type(ex).__name__}: {str(ex)[:200]}"
                 raise
             finally:
@@ -443,13 +453,13 @@ class WebSyncRuntime:
                         for k in ["success", "skipped", "failed"]:
                             if k in result:
                                 self.state[k] = int(result[k] or 0)
-                    if self.state.get("phase") not in {"ERROR"}:
+                    if self.state.get("phase") not in {"ERROR", "STOPPED"}:
                         self.state["phase"] = "DONE"
         except Exception:
             with self.lock:
                 self.state["running"] = False
                 self.state["finished_at"] = self.state["finished_at"] or time.strftime("%Y-%m-%d %H:%M:%S")
-                if self.state.get("phase") != "ERROR":
+                if self.state.get("phase") not in {"ERROR", "STOPPED"}:
                     self.state["phase"] = "ERROR"
             raise
 
@@ -558,12 +568,14 @@ def _settings_ui_schema() -> List[Dict[str, Any]]:
              "min": 0, "max": 3600, "desc": tr("settings.tooltip.adb_recovery_wait")},
         ]},
         {"title": tr("settings.group.battery"), "desc": tr("settings.group.battery.desc"), "items": [
-            {"key": "BATTERY_LOW_THRESHOLD_PCT", "label": tr("settings.label.battery_low_threshold"), "type": "int",
-             "min": 0, "max": 100, "desc": tr("settings.tooltip.battery_low_threshold")},
-            {"key": "BATTERY_CRITICAL_PCT", "label": tr("settings.label.battery_critical"), "type": "int",
-             "min": 0, "max": 100, "desc": tr("settings.tooltip.battery_critical")},
+            {"key": "BATTERY_CRITICAL_PCT", "label": tr("settings.label.battery_stop"), "type": "int",
+             "min": 0, "max": 100, "desc": tr("settings.tooltip.battery_stop")},
+            {"key": "BATTERY_LOW_THRESHOLD_PCT", "label": tr("settings.label.battery_resume"), "type": "int",
+             "min": 0, "max": 100, "desc": tr("settings.tooltip.battery_resume")},
             {"key": "BATTERY_WAIT_MAX_SEC", "label": tr("settings.label.battery_wait_max"), "type": "int",
              "min": 0, "max": 86400, "desc": tr("settings.tooltip.battery_wait_max")},
+            {"key": "BATTERY_WAIT_POLL_MIN", "label": tr("settings.label.battery_wait_poll"), "type": "int",
+             "min": 1, "max": 120, "desc": tr("settings.tooltip.battery_wait_poll")},
             {"key": "BATTERY_CHECK_INTERVAL_SEC", "label": tr("settings.label.battery_check_interval"), "type": "int",
              "min": 30, "max": 86400, "desc": tr("settings.tooltip.battery_check_interval")},
             {"key": "DEVICE_TEMP_LIMIT_C", "label": tr("settings.label.device_temp_limit"), "type": "float",
@@ -590,6 +602,8 @@ def _settings_ui_schema() -> List[Dict[str, Any]]:
              "desc": tr("settings.tooltip.enable_night")},
             {"key": "SCREEN_BRIGHTNESS_NIGHT", "label": tr("settings.label.night_brightness"), "type": "int", "min": 0, "max": 255,
              "desc": tr("settings.tooltip.night_brightness")},
+            {"key": "SCREEN_OFF_WHEN_IDLE", "label": tr("settings.label.screen_off_idle"), "type": "bool",
+             "desc": tr("settings.tooltip.screen_off_idle")},
         ]},
         {"title": tr("settings.group.disconnect_log"), "desc": tr("settings.group.disconnect_log.desc"), "items": [
             {"key": "DISCONNECT_LOG_ENABLED", "label": tr("settings.label.disconnect_log_enabled"), "type": "bool",

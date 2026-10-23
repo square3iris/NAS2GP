@@ -588,25 +588,32 @@ class Database(
     def get_unconfirmed_transferred_files(self, limit=None):
         """v1.14.0 取り残し復旧 用:
         端末 へ 転送 完了 (phone_transfer_state='DONE') し た が Google Photos で まだ
-        確認 でき て おら ず (google_photos_state='PENDING')、 端末 から も まだ 削除 でき て
-        いない (phone_delete_state != 'DONE') ファイル 一覧 を 返す 。
+        確認 でき て おら ず (google_photos_state が 'PENDING' または 'FAILED')、 端末 から も
+        まだ 削除 でき て いない (phone_delete_state != 'DONE') ファイル 一覧 を 返す 。
 
         これら は 「再転送 対象 (get_pending_files: T=PENDING 限定)」 にも
         「Pre-1 GC (get_phone_pending_delete_files: G=DONE 限定)」 にも 該当 せず 、
         中断 した バッチ の 取り残し として 端末 容量 を 占有 し 続け る 。 呼び出し側 は
         転送 を やり直さ ず に バックアップ 確認 → 削除 だけ を 再実行 する 。
 
+        v1.14.2: 'FAILED' も 対象 に 含め る 。 Phase 5/6 NG の 非 緩和 パス で
+        google_photos_state='FAILED' と さ れ た 行 は 、 従来 「PENDING 限定」 の 本 クエリ にも
+        「DONE 限定」 の Pre-1 GC にも 該当 せず 、 端末 上の 実 ファイル が 恒久的 に 容量 を
+        占有 し て Pre-0 の 容量 枯渇 FATAL を 招い て い た 。 FAILED も 再 確認 → 削除 の
+        やり直し 対象 に 含め 、 取り残し を 解消 する (GP 確認 前 に は 削除 し ない ため 安全)。
+
         v1.14.0 leftover-recovery: files transferred to the device but not yet confirmed
-        by Google Photos and not yet deleted on the device. They match neither the
-        re-transfer list (T=PENDING only) nor Pre-1 GC (G=DONE only), so abandoned batches
-        keep occupying device space. Callers re-run backup confirmation then delete
-        without re-transferring.
+        by Google Photos ('PENDING' or 'FAILED') and not yet deleted on the device. They
+        match neither the re-transfer list (T=PENDING only) nor Pre-1 GC (G=DONE only), so
+        abandoned batches keep occupying device space. Callers re-run backup confirmation
+        then delete without re-transferring. v1.14.2: include 'FAILED' so rows marked failed
+        by a Phase 5/6 NG are re-checked and deleted instead of stranded forever.
         """
         base_sql = """
         SELECT path, filename
         FROM files
         WHERE phone_transfer_state = 'DONE'
-          AND COALESCE(google_photos_state, 'PENDING') = 'PENDING'
+          AND COALESCE(google_photos_state, 'PENDING') IN ('PENDING', 'FAILED')
           AND COALESCE(phone_delete_state, 'PENDING') != 'DONE'
         ORDER BY id ASC
         """

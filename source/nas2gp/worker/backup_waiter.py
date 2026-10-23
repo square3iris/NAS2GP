@@ -36,6 +36,7 @@ from nas2gp.device.ui import (
     get_last_detailed_status,
     extract_google_photos_progress,
     reapply_night_brightness,
+    keep_screen_off,
 )
 from nas2gp.core.logger import Logger
 from nas2gp.core.i18n import tr
@@ -105,43 +106,79 @@ class UploadWorker:
     def __init__(self):
 
         self.device = Device()
-        # v1.13.9: バックアップ 待機 中 の 電池 監視 状態 (前回 の 残量 と 確認 時刻)。
-        #   Battery-watch state for the backup wait (previous level and last check time).
-        self._bat_state = {"last_level": None, "last_check": 0.0}
+        # v1.13.9: バックアップ 待機 中 の 電池 監視 状態 (前回 の 確認 時刻)。
+        #   Battery-watch state for the backup wait (last check time).
+        self._bat_state = {"last_check": 0.0}
 
-    def _battery_ok(self):
-        """v1.13.9: Google Photos の バックアップ 待機 中 も 電池 を 監視 する 。
-        残量 が 絶対 下限 未満 、 また は 閾値 未満 で 充電 に よる 回復 が 見込め ない とき
-        False を 返す (呼び出し 側 は 安全 停止 を 要求 する)。
-        戻り値: True=続行 可 / False=安全 停止 すべ き 。
-        v1.13.9: Monitor the battery during the Google Photos backup wait too.
-        Returns False (and the caller requests a safe stop) when the level is below
-        the absolute floor, or below the threshold without charging recovery."""
+    def _battery_gate(self):
+        """v1.14.2: Google Photos の バックアップ 待機 中 の 電池 保護 ゲート 。
+        残量 が 閾値 未満 の とき は 即 停止 せず 、 回復 する まで 待機 する
+        (転送 フェーズ の Uploader._battery_gate() と 同じ 挙動 に 統一)。
+        充電 状態 は 判定 に 使わ ない (表示 専用)。
+        戻り値: (status, waited_seconds)
+          status = "OK"      : 続行 可
+                   "STOPPED" : 停止 要求 (ユーザー / 保護 停止 要求)
+                   "TIMEOUT" : 保護 停止 (絶対 下限 割れ 、 または 待機 上限 超過)
+        v1.14.2: battery protection gate during the Google Photos backup wait.
+        Instead of stopping immediately below the threshold, wait until the level
+        recovers (same behaviour as Uploader._battery_gate()). The charging flag is
+        display-only. Returns (status, waited_seconds); status is "OK" / "STOPPED" /
+        "TIMEOUT" (below the absolute floor, or the wait limit was exceeded).
+        """
         try:
             from nas2gp.core import settings as _s
+        except Exception:
+            return "OK", 0.0
+        try:
             interval = float(getattr(_s, "BATTERY_CHECK_INTERVAL_SEC", 600) or 0)
         except Exception:
-            _s = None
             interval = 600.0
         _now = time.time()
         if interval > 0 and (_now - self._bat_state["last_check"]) < interval:
-            return True
+            return "OK", 0.0
         self._bat_state["last_check"] = _now
-        try:
-            from nas2gp.device.adb import ADB as _ADB
-            _h = _ADB.get_device_health() or {}
-        except Exception:
-            return True
-        _lvl = _h.get("battery_level")
-        _chg = _h.get("battery_charging")
-        if _lvl is None:
-            return True
-        try:
-            _lvl_i = int(_lvl)
-        except Exception:
-            return True
-        if _lvl_i < 0:
-            return True
+
+        def _read_level():
+            """読める 残量 を 返す (読め ない とき は -1)。
+            Return the readable level (-1 when unreadable)."""
+            try:
+                from nas2gp.device.adb import ADB as _ADB
+                _h = _ADB.get_device_health() or {}
+            except Exception:
+                return -1
+            _lvl = _h.get("battery_level")
+            if _lvl is None:
+                return -1
+            try:
+                return int(_lvl)
+            except Exception:
+                return -1
+
+        def _publish(_phase, _detail=""):
+            try:
+                from nas2gp.core.util import publish_phase as _pp
+                _pp(phase=_phase, detail=_detail)
+            except Exception:
+                pass
+
+        def _stop_now():
+            try:
+                from nas2gp.core import control as _control
+                # v1.14.2: 保護 停止 で ある こと を 記録 し 、 ユーザー 操作 と し て
+                #   表示 さ れ ない よう に する 。
+                # v1.14.2: record that this is a protection stop so it is not
+                #   reported as a user action.
+                _control.request_stop_now(reason=_control.REASON_PROTECTION)
+            except Exception:
+                pass
+
+        def _stop_requested():
+            try:
+                from nas2gp.core import control as _control
+                return bool(_control.stop_now_requested())
+            except Exception:
+                return False
+
         try:
             thr = int(getattr(_s, "BATTERY_LOW_THRESHOLD_PCT", 20) or 20)
         except Exception:
@@ -150,32 +187,92 @@ class UploadWorker:
             crit = int(getattr(_s, "BATTERY_CRITICAL_PCT", 10) or 10)
         except Exception:
             crit = 10
-        _prev = self._bat_state.get("last_level")
-        self._bat_state["last_level"] = _lvl_i
-        _rising = bool(_chg is True and _prev is not None and _lvl_i > _prev)
-        if 0 <= _lvl_i < crit:
-            ok = False
-        elif _lvl_i >= thr:
-            ok = True
-        else:
-            ok = _rising
-        if ok:
-            return True
         try:
-            if _lvl_i < crit:
-                Logger.error(tr("log.flow.battery_critical").format(level=_lvl_i, floor=crit))
-            elif _chg is True:
-                Logger.warning(tr("log.flow.battery_draining").format(level=_lvl_i, thr=thr))
-            else:
-                Logger.warning(tr("log.flow.battery_low").format(level=_lvl_i, thr=thr))
+            wait_max = float(getattr(_s, "BATTERY_WAIT_MAX_SEC", 3600) or 0)
+        except Exception:
+            wait_max = 3600.0
+
+        _lvl_i = _read_level()
+        if _lvl_i < 0 or _lvl_i >= thr:
+            return "OK", 0.0
+
+        if _lvl_i < crit:
+            # 絶対 下限 割れ → 充電 状態 に 関係 なく 直ちに 安全 停止 。
+            _msg = tr("log.flow.battery_critical").format(level=_lvl_i, floor=crit)
+            try:
+                Logger.error(_msg)
+            except Exception:
+                pass
+            _publish("STOPPED", _msg)
+            _stop_now()
+            return "TIMEOUT", 0.0
+
+        # 閾値 未満 (危険域 未満 で は ない) → 回復 する まで 待機 する 。
+        try:
+            Logger.warning(tr("log.flow.battery_low").format(level=_lvl_i, thr=thr))
         except Exception:
             pass
+        _waited = 0.0
+        # v1.14.2: 待機 中 の 残量 読み直し 間隔 は 設定 値 (分) を 使う (既定 10分)。
+        #   停止 要求 に は 待機 中 でも 即 応 する ため 、 sleep を 1秒 刻み に 分割 する 。
+        # v1.14.2: battery re-check interval comes from the setting (minutes,
+        #   default 10). The sleep is split into 1 s ticks so a stop request is
+        #   honoured immediately during the wait.
         try:
-            from nas2gp.core import control as _control
-            _control.request_stop_now()
+            _poll = float(getattr(_s, "BATTERY_WAIT_POLL_MIN", 10) or 10) * 60.0
         except Exception:
-            pass
-        return False
+            _poll = 600.0
+        if _poll <= 0:
+            _poll = 600.0
+        _tick = 1.0
+        while True:
+            if _stop_requested():
+                return "STOPPED", _waited
+            _remain = max(0, int(wait_max - _waited)) if wait_max > 0 else 0
+            _publish("BATTERY_WAIT", tr("log.flow.battery_wait").format(
+                level=_lvl_i, thr=thr, remain=_remain))
+            _slept = 0.0
+            while _slept < _poll:
+                if _stop_requested():
+                    return "STOPPED", _waited
+                # v1.14.2: 回復待ち の 間 は UI を 使わ ない ため 画面 を OFF に 保つ
+                #   (点灯 した まま だ と 充電 が 進ま ない)。 再送 は 内部 で 間引か れ る 。
+                # v1.14.2: Keep the screen off while waiting for recovery (a lit
+                #   screen prevents charging). The re-send is throttled internally.
+                try:
+                    keep_screen_off()
+                except Exception:
+                    pass
+                _step = min(_tick, _poll - _slept)
+                time.sleep(_step)
+                _slept += _step
+            _waited += _poll
+            _lvl_i = _read_level()
+            if 0 <= _lvl_i < crit:
+                _msg = tr("log.flow.battery_critical").format(level=_lvl_i, floor=crit)
+                try:
+                    Logger.error(_msg)
+                except Exception:
+                    pass
+                _publish("STOPPED", _msg)
+                _stop_now()
+                return "TIMEOUT", _waited
+            if _lvl_i < 0 or _lvl_i >= thr:
+                try:
+                    Logger.success(tr("log.flow.battery_ok").format(
+                        level=(_lvl_i if _lvl_i >= 0 else "?")))
+                except Exception:
+                    pass
+                return "OK", _waited
+            if wait_max > 0 and _waited >= wait_max:
+                _msg = tr("log.flow.battery_timeout").format(min=round(wait_max / 60))
+                try:
+                    Logger.error(_msg)
+                except Exception:
+                    pass
+                _publish("STOPPED", _msg)
+                _stop_now()
+                return "TIMEOUT", _waited
 
     def camera_files(self):
 
@@ -368,6 +465,8 @@ class UploadWorker:
 
         saw_backing_up = False
         saw_waiting = False
+        saw_preparing = False
+        preparing_logged = False
         saw_complete_ever = False
         saw_complete_count_total = 0
         first_complete_ts = None   # NEW: 最初に complete を 観測した時刻
@@ -390,7 +489,7 @@ class UploadWorker:
         prev_complete_total = 0
 
         def saw_any_valid_progress():
-            return saw_backing_up or saw_waiting
+            return saw_backing_up or saw_waiting or saw_preparing
 
         lock_count = 0
 
@@ -457,6 +556,25 @@ class UploadWorker:
 
             elif status == "waiting":
                 saw_waiting = True
+                backing_up_count = 0
+                complete_streak = 0
+
+            elif status == "preparing":
+                # v1.14.2: 転送 直後 の Google フォト 「バックアップ の 準備中 /
+                #   フォト ライブラリ を スキャン しています」 は 正常 な 待機 状態 。
+                #   unknown と 区別 する こと で 、 毎 tick の 強制 復旧 (scroll +
+                #   prepare_ui) と WARNING 連投 を 根本 的 に 防ぐ 。
+                #   (旧: unknown 扱い の ため 「unknown streak=N」 が 数十 行 出 て い た)
+                #   v1.14.2: The post-transfer "preparing / scanning" screen is a
+                #   normal wait. Treating it as its own status prevents per-tick
+                #   forced recovery and the "unknown streak=N" WARNING storm.
+                saw_preparing = True
+                if not preparing_logged:
+                    try:
+                        Logger.info(tr("bw.log.preparing_detected"))
+                    except Exception:
+                        pass
+                    preparing_logged = True
                 backing_up_count = 0
                 complete_streak = 0
 
@@ -559,6 +677,7 @@ class UploadWorker:
                     "complete": "c",
                     "backing_up": "b",
                     "waiting": "w",
+                    "preparing": "p",
                     "lock_screen": "l",
                     "tutorial": "t",
                     "unknown": "u",
@@ -695,13 +814,33 @@ class UploadWorker:
                     _skip_unknown_count = False
                 if not _skip_unknown_count:
                     unknown_count += 1
-                    if unknown_count >= 3:
-                        Logger.warning(
-                            f"Google Photos Recovery (unknown x{unknown_count}) #{recovery_count}"
-                        )
-                        recovery_count += 1
-                        self._run_recovery_sequence(force_stop_photos=(unknown_count % 2 == 0))
+                    # v1.14.2: 停滞 しきい値 は backing_up 停滞 と 同じ 実効 値 を 使う
+                    #   (旧: 3 固定 で 設計 が 二重 化 し て い た)。
+                    # v1.14.2: Use the same effective threshold as the backing_up stall
+                    #   (the old hard-coded 3 duplicated the stall-limit design).
+                    _recover_limit = _stall_limit if _stall_limit > 0 else 3
+                    if unknown_count >= _recover_limit:
                         unknown_count = 0
+                        recovery_count += 1
+                        # v1.14.2: 交互 に 「画面 復帰 のみ」 と 「Photos 再起動」 を 行う 。
+                        #   旧 コード の unknown_count % 2 は 直後 に 0 へ リセット さ れ る ため
+                        #   常に False に な り 、 Photos 再起動 が 一度 も 実行 さ れ な い 死んだ 分岐 だっ た 。
+                        # v1.14.2: Alternate between a plain UI resume and a Photos restart.
+                        #   The old unknown_count % 2 was always False (reset to 0 right
+                        #   after), so the restart branch was dead code.
+                        _force_stop = bool(recovery_count % 2 == 0)
+                        _recover_msg = (
+                            f"Google Photos Recovery (unknown x{_recover_limit}) "
+                            f"#{recovery_count} force_stop={_force_stop}"
+                        )
+                        # v1.14.2: 同じ 待機 が 続く 間 の 連投 を 防ぐ ため 、 1 回 目 だけ WARNING 。
+                        # v1.14.2: Only the first recovery of the episode is a WARNING
+                        #   (prevents a continuous WARNING stream while waiting).
+                        if recovery_count == 1:
+                            Logger.warning(_recover_msg)
+                        else:
+                            Logger.info(_recover_msg)
+                        self._run_recovery_sequence(force_stop_photos=_force_stop)
 
             # v1.7.15: 定期 ハートビート ([ハートビート] ...) は ログ ノイズ の ため 廃止 。
             #   待機中 で ある こと は 上記 DEBUG BAR の GP 進捗 行 で 十分 に 把握 できる 。
@@ -715,6 +854,16 @@ class UploadWorker:
             # v1.7.15: Helper that emits a final "complete" tick right before
             # accepting; without it the Web UI keeps showing the last progress state.
             def _finalize_complete():
+                # v1.14.2: 受理 (return) 直前 は 画面 を 見る 必要 が 無い ため 、 ここ で OFF に
+                #   戻す 。 これ が 無い と 最後 の 状態 確認 (wakeup) で 点灯 した まま 、
+                #   後続 の 削除 工程 へ 点灯 が 残っ て しまう 。
+                # v1.14.2: no screen is needed right before acceptance, so turn it off
+                #   here; otherwise the light stays on from the last status check into
+                #   the following delete stage.
+                try:
+                    keep_screen_off()
+                except Exception:
+                    pass
                 try:
                     _events.publish(_events.BACKUP_RULES_TICK, {
                         "gp": {
@@ -851,18 +1000,37 @@ class UploadWorker:
             except Exception:
                 pass
 
-            # v1.13.9: 待機 ループ で も 電池 を 監視 する 。 残量 が 危険 域 なら
-            #   この バッチ を バックアップ 未確認 (False) と し て 返し 、 実行 停止 を 要求 する
-            #   (従来 は この ループ に 電池 チェック が 無く 、 待機 中 に 端末 が 電源 落ち し た)。
-            # v1.13.9: Watch the battery inside the wait loop as well. If the level is
-            #   critical, return this batch as backup-not-confirmed (False) and request a
-            #   stop (previously this loop had no battery check and the device powered off).
+            # v1.13.9: 待機 ループ で も 電池 を 監視 する (従来 は この ループ に 電池
+            #   チェック が 無く 、 待機 中 に 端末 が 電源 落ち し た)。
+            # v1.14.2: 残量 が 閾値 未満 の とき は 即 停止 せず 回復 まで 待機 する
+            #   (転送 フェーズ と 同じ 挙動)。 危険域 / 待機 上限 超過 で 保護 停止。
+            # v1.13.9: Watch the battery inside the wait loop as well.
+            # v1.14.2: Below the threshold we wait for recovery instead of stopping
+            #   immediately (same as the transfer phase); a critical level or an
+            #   exceeded wait limit results in a protection stop.
             try:
-                _bat_ok = self._battery_ok()
+                _bat_status, _bat_waited = self._battery_gate()
             except Exception:
-                _bat_ok = True
-            if not _bat_ok:
+                _bat_status, _bat_waited = "OK", 0.0
+            if _bat_status != "OK":
+                # この バッチ を バックアップ 未確認 (False) と し て 返す 。
                 return False, recovery_count
+            if _bat_waited > 0:
+                # 電池 回復 待ち は Google Photos の 停滞 で は ない ため 、
+                #   無進捗 タイマー を リセット する (復帰 直後 の 誤 タイムアウト 防止)。
+                last_progress_ts = time.time()
+
+            # v1.14.2: 状態 確認 が 終わっ た ので 、 次 の ポーリング まで 画面 を OFF に
+            #   する (UI 不要 区間 の 消灯)。 Google Photos の アップロード は 画面 OFF の
+            #   まま でも 継続 する (夜間 の 充電 バックアップ と 同じ 挙動)。
+            #   再送 は 内部 で 60 秒 間隔 に 間引か れ る 。
+            # v1.14.2: The status fetch is done, so turn the screen off until the next
+            #   poll (the UI is not needed). Google Photos keeps uploading with the
+            #   screen off, just like a night-time charging backup.
+            try:
+                keep_screen_off()
+            except Exception:
+                pass
 
             time.sleep(interval)
 

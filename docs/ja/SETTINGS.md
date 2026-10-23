@@ -57,9 +57,10 @@ NAS2GP/ (リポジトリルート)
   "ADB_RECOVER_MIN_INTERVAL_SEC": 45.0,
   "ADB_FAILURE_POLICY": "pause_dialog",
   "ADB_RECOVERY_WAIT_SEC": 300,
-  "BATTERY_LOW_THRESHOLD_PCT": 20,
-  "BATTERY_CRITICAL_PCT": 10,
+  "BATTERY_LOW_THRESHOLD_PCT": 30,
+  "BATTERY_CRITICAL_PCT": 15,
   "BATTERY_WAIT_MAX_SEC": 3600,
+  "BATTERY_WAIT_POLL_MIN": 10,
   "BATTERY_CHECK_INTERVAL_SEC": 600,
   "DEVICE_TEMP_LIMIT_C": 45.0,
   "DISCONNECT_LOG_ENABLED": true,
@@ -67,13 +68,14 @@ NAS2GP/ (リポジトリルート)
   "BACKUP_TIMEOUT": 600,
   "BACKUP_ABSOLUTE_MAX_SECONDS": 7200,
   "MIN_BACKUP_THROUGHPUT_MBPS": 2.0,
-  "BACKUP_CHECK_INTERVAL": 8,
+  "BACKUP_CHECK_INTERVAL": 30,
   "MIN_ACCEPT_ELAPSED_SECONDS": 15,
-  "BACKUP_STALLED_LIMIT": 15,
+  "BACKUP_STALLED_LIMIT": 5,
   "RESTART_PHOTOS_AFTER_PUSH": false,
   "LOG_VERBOSITY": "standard",
   "ENABLE_NIGHT_LIGHT_MODE": true,
   "SCREEN_BRIGHTNESS_NIGHT": 0,
+  "SCREEN_OFF_WHEN_IDLE": true,
   "WEB_SERVER_HOST": "0.0.0.0",
   "WEB_SERVER_PORT": 8000
 }
@@ -133,17 +135,18 @@ NAS2GP/ (リポジトリルート)
 
 | キー | 型 | 既定 | 内容 |
 |---|---|---|---|
-| `BATTERY_LOW_THRESHOLD_PCT` | int | `20` | 低残量とみなす閾値 (%)。残量がこれ未満で、充電中でも残量が増えていなければ転送を一時停止 |
-| `BATTERY_CRITICAL_PCT` | int | `10` | 絶対下限 (%)。残量がこれ未満で充電による回復が見込めない場合は、充電状態に関係なく即 安全停止 |
+| `BATTERY_LOW_THRESHOLD_PCT` | int | `30` | 低残量とみなす閾値 (%)。残量がこれ未満の間は転送を一時停止 (充電状態は判定に使わない) |
+| `BATTERY_CRITICAL_PCT` | int | `15` | 絶対下限 (%)。残量がこれ未満になったら、充電状態に関係なく即 安全停止 |
 | `BATTERY_WAIT_MAX_SEC` | int | `3600` | 低残量・高温で待機する上限 (秒)。超過時は安全停止 |
+| `BATTERY_WAIT_POLL_MIN` | int | `10` | 待機中に残量を読み直す間隔 (分)。温度待機は冷却を早く検知するため 15 秒固定 |
 | `BATTERY_CHECK_INTERVAL_SEC` | int | `600` | 転送中に残量・温度を確認する間隔 (秒)。各バッチ開始前は必ず確認 |
 | `DEVICE_TEMP_LIMIT_C` | float | `45.0` | 本体温度の上限 (℃)。超えると新規転送を一時停止し冷却を待機。`0` で無効 |
 
-> 低残量を検知すると転送を一時停止し、充電または残量回復を検知すると自動で再開します。
-> **充電中でも残量が前回より減っている場合** (給電が追いつかない) は低残量として扱うため、
-> 一晩中「充電中」のまま残量が下がり続けて電源が落ちる事態を防ぎます。
+> 低残量を検知すると転送を一時停止し、残量が閾値まで回復すると自動で再開します。
+> 判定は **残量の実測値のみ** で行い、充電状態 (`battery_charging`) は表示専用です。
+> ケーブルを挿していても実際に充電できていない場合があるためです。
 > 待機が `BATTERY_WAIT_MAX_SEC` を超えた場合は、そのバッチの失敗分を `PENDING` に戻して安全停止します。
-> また、Google Photos のバックアップ完了待機 (工程⑥) 中も同じ基準で残量を監視し、低下していれば安全停止します。
+> また、Google Photos のバックアップ完了待機 (工程⑥) 中も同じ基準で残量を監視し、閾値未満なら**回復まで待機**します (v1.14.2 で待機型に統一。処理中の停止要求には待機中でも 1 秒以内に応答)。
 
 > **温度保護 (v1.14.0)**: 本体温度が `DEVICE_TEMP_LIMIT_C` を超えると新規転送を一時停止し、
 > 冷却を待ちます。上限から **3℃ 下がると自動で再開** します (上限付近でのばたつき防止)。
@@ -161,22 +164,27 @@ NAS2GP/ (リポジトリルート)
 | `BACKUP_TIMEOUT` | int | `600` | 無進捗とみなすまでの待機時間 (秒) |
 | `BACKUP_ABSOLUTE_MAX_SECONDS` | int | `7200` | バックアップ待機の絶対上限 (秒)。大容量ファイル向けの最終上限 |
 | `MIN_BACKUP_THROUGHPUT_MBPS` | float | `2.0` | 無進捗タイムアウトをバッチサイズから見積もる際の「保守的な想定速度」(MB/s)。サイズ ÷ この値 を `BACKUP_TIMEOUT` の下限として使う (`0` で無効)。残り枚数が減らない単一の大容量ファイル (例: 4GB の動画) を誤って打ち切らない |
-| `BACKUP_CHECK_INTERVAL` | int | `8` | 画面文言 (UIAutomator dump) を確認する間隔 (秒) |
+| `BACKUP_CHECK_INTERVAL` | int | `30` | 画面文言 (UIAutomator dump) を確認する間隔 (秒)。1 周期は「確認処理 (画面 ON + dump) + この間隔」になるため、短くするほど画面の点灯時間が増えて充電を妨げる。無進捗の打ち切りは時間基準のため影響しない |
 | `MIN_ACCEPT_ELAPSED_SECONDS` | int | `15` | 完了受理に必要な最低経過時間 (秒) |
-| `BACKUP_STALLED_LIMIT` | int | `15` | 停滞リスタートの判定回数。「バックアップ中」が監視ループでこの回数だけ連続したら Google Photos を再起動して立て直す (実時間は `BACKUP_CHECK_INTERVAL` に依存。例: 15回 × 8秒 ≒ 120秒)。大容量ファイルでは無進捗タイムアウトに比例して自動で緩和される (`0` で無効) |
+| `BACKUP_STALLED_LIMIT` | int | `5` | 停滞リスタートの判定回数。「バックアップ中」が監視ループでこの回数だけ連続したら Google Photos を再起動して立て直す (実時間は `BACKUP_CHECK_INTERVAL` に依存。例: 5回 × 30秒 ≒ 150秒)。大容量ファイルでは無進捗タイムアウトに比例して自動で緩和される (`0` で無効) |
 | `RESTART_PHOTOS_AFTER_PUSH` | bool | `false` | バックアップ失敗時のみ Google フォトを再起動する |
 
-### 3.6 端末の画面 (バックアップ中の減光)
+### 3.6 端末の画面 (バックアップ中の減光 / 待機中の消灯)
 
 バックアップ (同期) の実行中に 端末 の画面を暗くして、眩しさや画面の焼き付きを防ぐ設定です。
 バックアップの実行中は減光し、終了時に元の輝度へ戻します。
 画面輝度はスクリーンショット取得 (OCR) やタップ操作とは独立しているため、
 輝度 `0` でもバックアップ判定や操作は通常どおり動作します。
 
+待機中 (画面を見る必要のない区間) の消灯は、減光とは独立した別設定です。転送中 / 電池・温度の
+回復待ち / バックアップ状態の確認と確認の間など、画面を見る必要のない区間は画面を OFF に保ちます。
+Google Photos のアップロードは画面を消したままでも継続します。
+
 | キー | 型 | 既定 | 内容 |
 |---|---|---|---|
 | `ENABLE_NIGHT_LIGHT_MODE` | bool | `true` | バックアップ中は画面を暗くする |
 | `SCREEN_BRIGHTNESS_NIGHT` | int | `0` | バックアップ中の画面輝度 (0–255)。実行終了時に元の輝度へ自動復元 |
+| `SCREEN_OFF_WHEN_IDLE` | bool | `true` | 画面を見る必要のない区間 (転送中 / 電池・温度の回復待ち / バックアップ状態の確認と確認の間) は端末の画面を消灯する。Google Photos のアップロードは画面を消したままでも継続する。電池低下で停止中の端末が点灯したままだと充電が著しく遅くなるため、ON を推奨。OFF にすると従来どおり減光のみになる |
 
 ### 3.7 解析ログ (切断解析 と 統計データ)
 
@@ -344,9 +352,10 @@ python db_admin.py --help
 
 夜間に長時間運転すると、端末の電池切れで転送が止まる場合があります。次の設定で自動復旧・安全停止します。
 
-- `BATTERY_LOW_THRESHOLD_PCT`: 低残量とみなす閾値 (既定 20%)。残量がこれ未満で、充電中でも残量が増えていなければ待機
-- `BATTERY_CRITICAL_PCT`: 絶対下限 (既定 10%)。残量がこれ未満で回復が見込めなければ充電状態に関係なく即 安全停止
+- `BATTERY_LOW_THRESHOLD_PCT`: 低残量とみなす閾値 (既定 30%)。残量がこれ未満の間は待機 (充電状態は判定に使わない)
+- `BATTERY_CRITICAL_PCT`: 絶対下限 (既定 15%)。残量がこれ未満になったら充電状態に関係なく即 安全停止
 - `BATTERY_WAIT_MAX_SEC`: 待機の上限 (既定 3600 = 60 分)。超過で安全停止
+- `BATTERY_WAIT_POLL_MIN`: 待機中に残量を読み直す間隔 (既定 10 分)
 - `BATTERY_CHECK_INTERVAL_SEC`: 転送中の残量確認間隔 (既定 600 = 10 分)
 - `DEVICE_TEMP_LIMIT_C`: 本体温度の上限 (既定 45℃)。超えると転送を一時停止し冷却を待機、3℃ 下がると再開。`0` で無効
 - `ADB_RECOVERY_WAIT_SEC`: 切断後の復旧待ち上限 (既定 300 = 5 分)

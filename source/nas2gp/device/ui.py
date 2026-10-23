@@ -215,8 +215,52 @@ def swipe_down(label="swipe_down", y_high=None, y_low=None, duration_ms=300):
     return ok
 
 
+# v1.14.2: UI を 使わ ない 区間 で 画面 を OFF に 保つ ため の 状態 / 再送 間隔 (秒)。
+#   keep_screen_off() は 監視 ループ の 各 tick など 高頻度 で 呼ん でも 、 前回 の
+#   送信 から この 秒数 未満 なら 何 も し ない 。 wakeup() が タイムスタンプ を
+#   リセット する ため 、 UI 操作 の 直後 は 次 の 呼び出し で 即 OFF を 送れる 。
+# v1.14.2: State / re-send interval (sec) for keeping the screen off while the UI
+#   is unused. Safe to call from every tick; wakeup() resets the timestamp so the
+#   screen is turned off again right after any UI work.
+_SCREEN_OFF_TS = {"last": 0.0}
+SCREEN_OFF_RESEND_SEC = 60.0
+
+
 def wakeup():
     adb("shell", "input", "keyevent", "KEYCODE_WAKEUP", label="wakeup")
+    # 画面 を 起こし た ので 、 次 の keep_screen_off() が 即座 に OFF を 送れる よう に する 。
+    # Waking the screen invalidates the cache so the next keep_screen_off() fires at once.
+    _SCREEN_OFF_TS["last"] = 0.0
+
+
+def keep_screen_off(force=False):
+    """UI を 使わ ない 区間 (転送 待ち / 電池 待機 / バックアップ 確認 の 合間) で
+    画面 を OFF に 保つ 。 高頻度 で 呼ん でも 問題 ない (再送 は 60 秒 間隔)。
+    設定 `SCREEN_OFF_WHEN_IDLE` が OFF の とき は 何 も し ない 。
+    戻り値: 実際 に キー を 送っ た とき だけ True。
+
+    v1.14.2: Keep the screen off while the UI is not needed (transfer wait,
+    battery wait, between backup polls). Safe to call every tick; the key event is
+    re-sent at most once per SCREEN_OFF_RESEND_SEC. No-op when SCREEN_OFF_WHEN_IDLE
+    is off. Returns True only when a key event was actually sent."""
+    try:
+        from nas2gp.core import settings as _s
+        if not bool(getattr(_s, "SCREEN_OFF_WHEN_IDLE", True)):
+            return False
+    except Exception:
+        pass
+    now = time.time()
+    if not force and (now - _SCREEN_OFF_TS["last"]) < SCREEN_OFF_RESEND_SEC:
+        return False
+    _SCREEN_OFF_TS["last"] = now
+    try:
+        # 失敗 は 無視 (端末 未接続 / 既に OFF でも 問題 ない)。 コンソール には 出さない 。
+        # Failures are ignored (no device / already off is fine); silent on the console.
+        adb("shell", "input", "keyevent", "KEYCODE_SLEEP",
+            label="screen_off(idle)", max_retry=0, print_on_console=False)
+    except Exception:
+        pass
+    return True
 
 
 def screen_off():
@@ -844,6 +888,11 @@ def _screen_context_ok(texts, for_status):
             "アップロードを待機",
             "Wi-Fi を待機",
             "充電を待機",
+            "バックアップの準備",
+            "フォトライブラリをスキャン",
+            "フォト ライブラリをスキャン",
+            "ライブラリをスキャン",
+            "スキャンしています",
             "フォトの設定",
             "バックアップと同期",
             "グーグル フォト",
@@ -860,6 +909,9 @@ def _screen_context_ok(texts, for_status):
             "All photos backed up",
             "All items backed up",
             "Upload complete",
+            "Preparing backup",
+            "Scanning your library",
+            "Scanning media items",
         ]
         hit = sum(1 for k in photo_only_signals if any(k in t for t in texts))
         if hit == 0:
@@ -959,6 +1011,48 @@ def is_waiting(texts):
         "Wi-Fi を待機しています",
         "Wi-Fiに接続されるのを待っています",
         "充電を待機しています",
+    ]
+
+    return any(
+        any(k in t for k in keywords)
+        for t in texts
+    )
+
+
+def is_preparing_backup(texts):
+    """
+    v1.14.2 新規: Google フォト の 「バックアップの準備中」 /
+    「フォト ライブラリをスキャンしています」 画面 を 検出 する 。
+
+    転送 直後 に ライブラリ を 再 スキャン する 間 に 表示 さ れる 正常 な 待機 状態 。
+    従来 は これ を 判別 できず `unknown` (異常) と し て 扱わ れ 、 毎 tick の 強制
+    復旧 (scroll + prepare_ui) と WARNING 連投 の 原因 に なっ て い た 。
+    ProgressBar 付き の 準備 / スキャン 文言 を 対象 と する 。
+
+    v1.14.2: Detects the Google Photos "preparing backup" / "scanning photo
+    library" screen. This is a normal wait state right after a transfer; it used
+    to be misclassified as `unknown`, causing per-tick forced recovery and a
+    WARNING storm.
+    """
+    if not _screen_context_ok(texts, "preparing"):
+        return False
+
+    keywords = [
+        "バックアップの準備",
+        "バックアップ の 準備",
+        "アップロードの準備",
+        "アップロード の 準備",
+        "フォトライブラリをスキャン",
+        "フォト ライブラリをスキャン",
+        "ライブラリをスキャンしています",
+        "ライブラリ を スキャン",
+        "スキャンしています",
+        # English
+        "Preparing backup",
+        "Preparing upload",
+        "Scanning your library",
+        "Scanning photo library",
+        "Scanning media items",
     ]
 
     return any(
@@ -1411,6 +1505,12 @@ def _get_status_without_prepare():
         return "complete"
     if is_backing_up(texts):
         return "backing_up"
+    # v1.14.2: 転送 直後 の 「バックアップ の 準備中 / フォト ライブラリ を スキャン 中」 を
+    #   unknown (異常) と 区別 し て 認識 する (正常 な 待機 状態)。
+    # v1.14.2: Distinguish the post-transfer "preparing / scanning" screen from
+    #   unknown; it is a normal wait state.
+    if is_preparing_backup(texts):
+        return "preparing"
     if not texts:
         return "unknown"
     return "unknown"

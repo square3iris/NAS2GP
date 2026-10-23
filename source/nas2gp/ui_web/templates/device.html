@@ -24,7 +24,7 @@
 
     <div style="margin-top:16px; border-top:1px solid #334155; padding-top:12px;">
       <div id="px-del-note" class="small" style="margin-bottom:8px"></div>
-      <button class="warnb" onclick="callDeleteUploaded()">{{ tr('web.device.delete_uploaded') }}</button>
+      <button id="px-del-btn" class="warnb" onclick="callDeleteUploaded()">{{ tr('web.device.delete_uploaded') }}</button>
     </div>
 
     <div style="margin-top:16px; border-top:1px dashed var(--err); padding-top:12px;">
@@ -43,9 +43,29 @@
 
     <div id="px-msg" class="small" style="margin-top:10px; min-height:16px;"></div>
   </section>
+
+  {# v1.14.2: 削除ボタン 押下 時 の 「処理中」 表示 。 実測 (ADB) に は 時間 が
+     かかる ため 、 押下 と 同時 に 応答 が ない よう 見え る の を 防ぐ 。
+     v1.14.2: "processing" indicator shown as soon as delete is pressed; the ADB
+     measurement takes time, so the UI must not look unresponsive. #}
+  <div id="px-busy" style="display:none; position:fixed; inset:0; z-index:60;
+       background:rgba(2,6,23,.72); align-items:center; justify-content:center; padding:18px;">
+    <div style="background:var(--panel); border:1px solid var(--accent); border-radius:14px;
+         padding:20px 26px; display:flex; align-items:center; gap:14px;
+         box-shadow:0 12px 40px rgba(0,0,0,.6); max-width:88vw;">
+      <span class="px-spin"></span>
+      <span id="px-busy-text" style="font-weight:700; font-size:15px;"></span>
+    </div>
+  </div>
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .px-spin { width:18px; height:18px; border-radius:50%; flex:0 0 auto;
+             border:3px solid rgba(56,189,248,.3); border-top-color:var(--accent);
+             animation: px-spin .8s linear infinite; }
+  @keyframes px-spin { to { transform: rotate(360deg); } }
+</style>
 <script>
 const PX_DCIM_ROOT = '/sdcard/DCIM';
 let _pxWorkDir = '';
@@ -57,6 +77,28 @@ function _pxMsg(text, color){
   if (!el) return;
   el.textContent = text || '';
   el.style.color = color || 'var(--sub)';
+}
+
+// v1.14.2: 削除 の 実行中 を 示す 「処理中」 表示 と ボタン の 二重 押し 防止 。
+// 実測 (ADB) や 削除 に は 時間 が かかる ため 、 押下 と 同時 に 表示 する 。
+// v1.14.2: "processing" popup and double-click guard for the delete button.
+// Measurement (ADB) and deletion take time, so show it as soon as pressed.
+let _pxBusy = false;
+function _pxBusyOn(text){
+  const o = $('px-busy');
+  const tx = $('px-busy-text');
+  if (tx) tx.textContent = text || '';
+  if (o) o.style.display = 'flex';
+  _pxBusy = true;
+  const b = $('px-del-btn');
+  if (b){ b.disabled = true; b.style.opacity = '0.6'; b.style.cursor = 'wait'; }
+}
+function _pxBusyOff(){
+  const o = $('px-busy');
+  if (o) o.style.display = 'none';
+  _pxBusy = false;
+  const b = $('px-del-btn');
+  if (b){ b.disabled = false; b.style.opacity = '1'; b.style.cursor = 'pointer'; }
 }
 
 function _pxGb(bytes){
@@ -175,18 +217,29 @@ async function setWorkdir(path){
 }
 
 async function callDeleteUploaded(){
+  if (_pxBusy) return;   // 二重 押し 防止 / double-click guard
   _pxMsg('');
   if (!_pxWorkDir) { _pxMsg(tf('web.device.uploaded_fail', {err: t('web.device.fetch_fail')}), 'var(--err)'); return; }
+  // 事前 確認 (対象 件数 ・ 容量 の 実測) は ADB で 時間 が かかる ため 、 押下 と 同時 に
+  // 「処理中」 を 表示 する (応答 なし に 見え る の を 防ぐ)。
+  // The preview measures count/size over ADB and takes time; show "processing" at once.
+  _pxBusyOn(t('web.device.uploaded_checking'));
   let pv = null;
   try {
     const r = await fetch('/api/device/delete_uploaded/preview');
     if (r.status === 409) {
       const j = await r.json();
+      _pxBusyOff();
       _pxMsg(j.message || t('web.consent.required'), 'var(--err)');
       return;
     }
     pv = await r.json();
-  } catch(e){ _pxMsg(tf('web.device.uploaded_fail', {err: e}), 'var(--err)'); return; }
+  } catch(e){
+    _pxBusyOff();
+    _pxMsg(tf('web.device.uploaded_fail', {err: e}), 'var(--err)');
+    return;
+  }
+  _pxBusyOff();
   if (!pv || pv.ok !== true) {
     _pxMsg(tf('web.device.uploaded_fail', {err: (pv && pv.error) || ''}), 'var(--err)');
     return;
@@ -201,6 +254,7 @@ async function callDeleteUploaded(){
   });
   if (!confirm(msg)) return;
   _pxMsg(t('web.device.uploaded_running'), 'var(--sub)');
+  _pxBusyOn(t('web.device.uploaded_running'));
   try {
     const r = await fetch('/api/device/delete_uploaded', { method:'POST' });
     const j = await r.json();
@@ -227,6 +281,7 @@ async function callDeleteUploaded(){
     _pxMsg(out, 'var(--ok)');
     loadWorkdir();
   } catch(e){ _pxMsg(tf('web.device.uploaded_fail', {err: e}), 'var(--err)'); }
+  finally { _pxBusyOff(); }
 }
 
 function _fmtDcimResult(j){
