@@ -197,6 +197,11 @@ removed desktop-GUI era is compressed).
 - **Implementation (v1.14.1)**: added `Device.measure_folder_strict()` (a strict variant returning `None` on failure) and `Device.wipe_folder_contents()` (delete -> measure -> recover -> retry), and rewrote `POST /api/device/delete_uploaded` to be verification-based. Device free space before/after is now logged and returned.
 - **Version bump (v1.14.1)**: `settings.APP_VERSION` changed from `1.14.0` to `1.14.1`.
 
+### v1.14.4 — Fixed the NameError at the end of a run (phase summary used tr without importing it)
+
+- **Fixed the `NameError` in the phase summary (v1.14.4)**: `core/util.py::print_phase_summary()` used `tr()` for its heading without importing `tr`, so every run started from the Web UI ended with `NameError: name 'tr' is not defined` at the post-transfer summary; even a fully successful transfer made the whole run report an error (a run with no transfer targets and leftovers only showed "success 0 / skipped 0 / failed 0" and an error). Added `from nas2gp.core.i18n import tr` to `core/util.py` (i18n never references util, so there is no circular import). The bug had been latent since the v1.8.0 package reorganisation and is unrelated to the v1.14.3 changes.
+- **Version bump (v1.14.4)**: `settings.APP_VERSION` changed from `1.14.3` to `1.14.4`.
+
 ### v1.14.3 — Fixed the screen left on after a run (three places where screen-off did not take effect)
 
 - **Screen off on run end / protection stop (v1.14.3)**: the Web UI process keeps running after a run finishes, so restoring the brightness alone left the device screen lit while idle, draining the battery until it ran flat during a long evaluation (the 10-minute heartbeat recorded the decline). The shutdown path (`finally`) in `sync_flow.py` now calls `keep_screen_off(force=True)`, so the screen is reliably turned off on every exit path: normal completion, protection stop (battery / storage) and user stop. The next run wakes the screen when needed.

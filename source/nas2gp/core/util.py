@@ -10,6 +10,13 @@ import sys
 import time
 from pathlib import Path
 
+# フェーズ サマリ の 見出し 文言 に tr() を 使う ため 参照 する 。
+# i18n 側 は 実行 時 に 言語 ファイル を 遅延 import する だけ で util を 参照 し ない ため 、
+# ここ で の トップレベル import は 循環 参照 に なら ない 。
+# Referenced for the tr() phase-summary heading. i18n lazily imports the language
+# files at runtime and never references util, so a top-level import here is cycle-free.
+from nas2gp.core.i18n import tr
+
 
 # ============================================
 # SMB / NAS セッション維持
