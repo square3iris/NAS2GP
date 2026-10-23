@@ -142,6 +142,19 @@ class Sync:
                 restore_brightness()
             except Exception:
                 pass
+            # 稼働 終了 後 も プロセス (Web UI) は 生き 続ける ため 、 端末 画面 を 点灯 した
+            #   まま 放置 する と 待機 中 に 電池 を 食う (長時間 評価 で 電池 切れ に 至っ た)。
+            #   ここ で 明示 的 に 消灯 する 。 保護 停止 (電池 低下 / 容量 不足) や ユーザー 停止 で
+            #   終わっ た 場合 も この finally を 通る 。 次 の 稼働 で 必要 な と き は wakeup さ れる 。
+            # The process (Web UI) keeps running after a run, so leaving the device screen
+            #   lit drains the battery while idle (it ran flat on a long evaluation). Turn
+            #   it off explicitly here. Protection stops (low battery / no space) and user
+            #   stops also pass through this finally; the next run wakes the screen when needed.
+            try:
+                from nas2gp.device.ui import keep_screen_off
+                keep_screen_off(force=True)
+            except Exception:
+                pass
 
     @staticmethod
     def _file_size(p):

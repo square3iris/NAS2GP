@@ -1,6 +1,6 @@
 # Changelog — Summary
 
-Last updated: 2026-10-22
+Last updated: 2026-10-24
 
 Format: Keep a Changelog / Versioning: Semantic Versioning.
 This file is a **summary** keeping only the highlights of each version (the long history from the
@@ -196,6 +196,13 @@ removed desktop-GUI era is compressed).
 - **Clearer UI (v1.14.1)**: when the wipe cannot be completed, it is no longer silently reported as success; the remaining count, size and free space are shown inline with a prompt to retry (new i18n key `web.device.uploaded_leftover`).
 - **Implementation (v1.14.1)**: added `Device.measure_folder_strict()` (a strict variant returning `None` on failure) and `Device.wipe_folder_contents()` (delete -> measure -> recover -> retry), and rewrote `POST /api/device/delete_uploaded` to be verification-based. Device free space before/after is now logged and returned.
 - **Version bump (v1.14.1)**: `settings.APP_VERSION` changed from `1.14.0` to `1.14.1`.
+
+### v1.14.3 — Fixed the screen left on after a run (three places where screen-off did not take effect)
+
+- **Screen off on run end / protection stop (v1.14.3)**: the Web UI process keeps running after a run finishes, so restoring the brightness alone left the device screen lit while idle, draining the battery until it ran flat during a long evaluation (the 10-minute heartbeat recorded the decline). The shutdown path (`finally`) in `sync_flow.py` now calls `keep_screen_off(force=True)`, so the screen is reliably turned off on every exit path: normal completion, protection stop (battery / storage) and user stop. The next run wakes the screen when needed.
+- **No more leftover lit screen during the backup wait (v1.14.3)**: the Google Photos status check (`get_backup_status`) wakes the screen (`wakeup`) on every call, so the screen-off at the end of the wait loop lost to the 60-second re-send throttle and the screen stayed lit between polls. The screen-off right after the status fetch is now `keep_screen_off(force=True)`, so it always turns off regardless of the throttle.
+- **Monitoring interval actually applied on the device (v1.14.3)**: because `_merge_missing_schema` never overwrites existing keys, the defaults changed in v1.14.2 (`BACKUP_CHECK_INTERVAL=30` / `BACKUP_STALLED_LIMIT=5`) were not applied to the existing `config_ui.json`, and the 8-second lit cycle continued. The device config is now set to 30 s / 5 polls with `SCREEN_OFF_WHEN_IDLE: true`. Existing setups still need a manual update from the settings screen.
+- **Version bump (v1.14.3)**: `settings.APP_VERSION` changed from `1.14.2` to `1.14.3`.
 
 ### v1.14.2 — Long-run stability (battery protection during backup wait / reclaiming GP-unconfirmed FAILED leftovers)
 

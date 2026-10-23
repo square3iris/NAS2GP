@@ -1023,12 +1023,14 @@ class UploadWorker:
             # v1.14.2: 状態 確認 が 終わっ た ので 、 次 の ポーリング まで 画面 を OFF に
             #   する (UI 不要 区間 の 消灯)。 Google Photos の アップロード は 画面 OFF の
             #   まま でも 継続 する (夜間 の 充電 バックアップ と 同じ 挙動)。
-            #   再送 は 内部 で 60 秒 間隔 に 間引か れ る 。
+            #   状態 確認 の 直後 は 画面 が 点い て いる ため 、 スロットル に 関係 なく 必ず
+            #   消灯 する (force=True)。 これ を 省く と ポーリング 周期 の 間 点灯 が 残る 。
             # v1.14.2: The status fetch is done, so turn the screen off until the next
             #   poll (the UI is not needed). Google Photos keeps uploading with the
-            #   screen off, just like a night-time charging backup.
+            #   screen off, just like a night-time charging backup. Right after a fetch
+            #   the screen is lit, so force the off key regardless of the throttle.
             try:
-                keep_screen_off()
+                keep_screen_off(force=True)
             except Exception:
                 pass
 
