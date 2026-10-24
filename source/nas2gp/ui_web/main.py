@@ -403,6 +403,17 @@ class WebSyncRuntime:
                 photo_path = _PHOTO_DIR_DEF
             setattr(_settings_mod, "PHOTO_DIR", photo_path)
 
+            # v1.14.6: NAS の 新規 / 更新 ファイル を DB へ 登録 する (CLI 版 app.py と 同じ 工程)。
+            #   これ が 無い と 、 進捗リセット (DB 退避) 直後 や 2 日目 の 稼働 で は
+            #   転送 対象 が 0 件 の まま 「バックアップ 完了 / 未送信 は あり ませ ん」 と して
+            #   即終了 し 、 転送 が 始まら ない 。
+            # v1.14.6: Register new/updated NAS files into the DB (the same step as the CLI
+            #   app.py). Without it, right after a progress reset (DB moved aside) or on a
+            #   second-day run the target list stays empty, so the run ends immediately
+            #   with "backup complete / nothing left to send" and never starts.
+            from nas2gp.scanner.local import Scanner as _Scanner
+            _Scanner().scan()
+
             db = Database()
             # v1.13.9: 途中 再開 を 選ば な かっ た 場合 は 、 前回 の チェックポイント を
             #   破棄 し て 最初 から 実行 する (UI の 「最初から」 選択 に 対応)。

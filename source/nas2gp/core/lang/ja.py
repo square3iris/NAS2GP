@@ -148,6 +148,7 @@ WORDS = {
     "scan.title":            "NAS2GP スキャナー",
     "scan.target_dir":       "対象ディレクトリ : {d}",
     "scan.done":             "スキャン完了",
+    "scan.stopped":          "スキャン中断 (停止要求)",
     "scan.count.images":     "画像ファイル : {n:,}",
     "scan.count.videos":     "動画ファイル : {n:,}",
     "scan.count.total":      "合計ファイル : {n:,}",
@@ -790,6 +791,7 @@ WORDS = {
     "web.home.dev.state.recovery": "recovery",
 
     # --- 工程 / フェーズ ---
+    "web.step.scan": "NAS スキャン",
     "web.step.capacity": "容量確保",
     "web.step.gp_stop": "Google Photos 停止",
     "web.step.upload": "転送",
@@ -808,6 +810,7 @@ WORDS = {
     "web.phase.delete": "端末 ファイル削除中",
     "web.phase.recover": "空き容量 復旧中",
     "web.phase.sync": "同期中",
+    "web.phase.scan": "NAS スキャン中",
     "web.phase.capacity": "空き容量 確認中",
     "web.phase.gp_stop": "Google Photos 停止中",
     "web.phase.media_scan": "メディア 反映中",

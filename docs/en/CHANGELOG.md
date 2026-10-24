@@ -206,6 +206,13 @@ removed desktop-GUI era is compressed).
 - **Related i18n keys (v1.14.5)**: added `web.stats.chart.remain` / `web.stats.series.remain` / `web.stats.series.required` / `web.stats.remain.note` / `web.stats.hint.remain` to `lang/ja.py` and `lang/en.py`.
 - **Version bump (v1.14.5)**: `settings.APP_VERSION` changed from `1.14.4` to `1.14.5`.
 
+### v1.14.6 — Restored the NAS scan at start (fix: transfer never started after a DB move-aside / on day 2)
+
+- **NAS scan restored at start (v1.14.6)**: the Web UI start path (`ui_web/main.py::_run_sync()`) had no NAS scan step; only the CLI `app.py` called the scanner. So right after a progress reset (DB moved aside) or on a second-day run, `files` stayed empty, the transfer target list was empty, and the run ended immediately with "Backup complete / nothing left to send" without ever starting (`Scanner().scan()` now runs on every start).
+- **SCAN phase made visible (v1.14.6)**: during the scan the Home phase now shows "Scanning NAS", and a leading "NAS scan" item (unnumbered) was added to the in-batch step indicator (new i18n keys `scan.stopped` / `web.step.scan` / `web.phase.scan`).
+- **Scanner hardening (v1.14.6)**: `PHOTO_DIR` is now resolved from settings on each call instead of an import-time copy, and an unset/missing root fails clearly (`scan.err.invalid_root`). The walk loop now honors `control.stop_now_requested()` so a scan can be aborted.
+- **Version bump (v1.14.6)**: `settings.APP_VERSION` changed from `1.14.5` to `1.14.6`.
+
 ### v1.14.4 — Fixed the NameError at the end of a run (phase summary used tr without importing it)
 
 - **Fixed the `NameError` in the phase summary (v1.14.4)**: `core/util.py::print_phase_summary()` used `tr()` for its heading without importing `tr`, so every run started from the Web UI ended with `NameError: name 'tr' is not defined` at the post-transfer summary; even a fully successful transfer made the whole run report an error (a run with no transfer targets and leftovers only showed "success 0 / skipped 0 / failed 0" and an error). Added `from nas2gp.core.i18n import tr` to `core/util.py` (i18n never references util, so there is no circular import). The bug had been latent since the v1.8.0 package reorganisation and is unrelated to the v1.14.3 changes.

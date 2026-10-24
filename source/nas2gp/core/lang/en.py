@@ -121,6 +121,7 @@ WORDS = {
     "scan.title":            "NAS2GP Scanner",
     "scan.target_dir":       "Target dir     : {d}",
     "scan.done":             "Scan finished.",
+    "scan.stopped":          "Scan aborted (stop requested).",
     "scan.count.images":     "Images         : {n:,}",
     "scan.count.videos":     "Videos         : {n:,}",
     "scan.count.total":      "Total files    : {n:,}",
@@ -735,6 +736,7 @@ WORDS = {
     "web.home.dev.state.recovery": "recovery",
 
     # --- Steps / phases ---
+    "web.step.scan": "NAS scan",
     "web.step.capacity": "Capacity",
     "web.step.gp_stop": "Google Photos stop",
     "web.step.upload": "Transfer",
@@ -753,6 +755,7 @@ WORDS = {
     "web.phase.delete": "Deleting device files",
     "web.phase.recover": "Recovering free space",
     "web.phase.sync": "Syncing",
+    "web.phase.scan": "Scanning NAS",
     "web.phase.capacity": "Checking free space",
     "web.phase.gp_stop": "Stopping Google Photos",
     "web.phase.media_scan": "Refreshing media",

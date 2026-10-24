@@ -5,13 +5,14 @@ import os
 import time
 from pathlib import Path
 
-from nas2gp.core.settings import PHOTO_DIR
+from nas2gp.core import settings as _settings
 from nas2gp.core.config import SUPPORTED_EXTENSIONS
 from nas2gp.storage.media import MediaFile
 from nas2gp.storage.db import Database
-from nas2gp.core.util import smb_session_keep_alive
+from nas2gp.core.util import smb_session_keep_alive, publish_phase
 from nas2gp.core.i18n import tr
 from nas2gp.core import events as _events
+from nas2gp.core import control as _control
 
 
 IMAGE_EXTENSIONS = {
@@ -41,6 +42,7 @@ class Scanner:
 
         self.start_time = 0
         self._scan_count = 0
+        self.stopped = False
 
     def scan(self):
 
@@ -48,17 +50,36 @@ class Scanner:
 
             self.start_time = time.time()
 
+            # PHOTO_DIR は config/config_ui.json により 実行時 に settings へ 上書き さ れる ため 、
+            #   import 時 の コピー で は なく settings から 毎回 読み直す 。
+            # PHOTO_DIR is overridden at runtime by the config, so read it from settings
+            #   each time instead of using the import-time copy.
+            photo_dir = Path(getattr(_settings, "PHOTO_DIR", "") or "")
+
+            # 未設定 / 不在 の まま 走査 する と カレント フォルダ を 巻き込む 恐れ が ある ため 、
+            #   ここ で 明確 に 失敗 さ せる (NAS 未接続 の まま 「未送信 なし」 と 誤表示 する の も 防ぐ)。
+            # Abort clearly when unset/missing: walking the CWD by accident or silently
+            #   reporting "nothing to send" with an unreachable NAS are both worse.
+            if not str(photo_dir) or str(photo_dir) in (".", "") or not photo_dir.exists():
+                msg = tr("scan.err.invalid_root").format(d=photo_dir)
+                print(msg)
+                raise RuntimeError(msg)
+
+            # 画面 (Web UI) の フェーズ 表示 を スキャン 中 に 切り替える 。
+            # Switch the on-screen (Web UI) phase display to the scan phase.
+            publish_phase(phase="SCAN", title=tr("scan.title"))
+
             print("=" * 60)
             print(tr("scan.title"))
             print("=" * 60)
-            print(tr("scan.target_dir").format(d=PHOTO_DIR))
+            print(tr("scan.target_dir").format(d=photo_dir))
             print()
 
-            smb_session_keep_alive(str(PHOTO_DIR))
+            smb_session_keep_alive(str(photo_dir))
 
-            self._fix_db_path_prefix()
+            self._fix_db_path_prefix(photo_dir)
 
-            self._scan_dir(Path(PHOTO_DIR))
+            self._scan_dir(photo_dir)
 
             self.db.commit()
 
@@ -66,7 +87,10 @@ class Scanner:
 
             print()
             print("=" * 60)
-            print(tr("scan.done"))
+            if self.stopped:
+                print(tr("scan.stopped"))
+            else:
+                print(tr("scan.done"))
             print("=" * 60)
 
             print(tr("scan.count.images").format(n=self.image_files))
@@ -89,9 +113,9 @@ class Scanner:
 
             self.db.close()
 
-    def _fix_db_path_prefix(self):
+    def _fix_db_path_prefix(self, photo_dir):
 
-        target_root = str(Path(PHOTO_DIR)).replace("\\", "/")
+        target_root = str(Path(photo_dir)).replace("\\", "/")
         target_drive = None
         if len(target_root) >= 2 and target_root[1] == ":":
             target_drive = target_root[:2]
@@ -160,6 +184,14 @@ class Scanner:
             with os.scandir(folder) as entries:
 
                 for entry in entries:
+
+                    # ユーザー 停止 要求 を 受けたら 走査 を 打ち切る (NAS 全体 の 走査 は
+                    #   数分 かかる こと が あり 、 停止 が 効か ない と 操作 でき なく なる)。
+                    # Abort the walk when the user requests a stop (a full NAS walk can take
+                    #   minutes and an unresponsive stop would leave the UI unusable).
+                    if self.stopped or _control.stop_now_requested():
+                        self.stopped = True
+                        return
 
                     if entry.name.startswith("."):
                         continue

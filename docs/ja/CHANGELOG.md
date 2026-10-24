@@ -205,6 +205,13 @@
 - **関連 i18n キー (v1.14.5)**: `web.stats.chart.remain` / `web.stats.series.remain` / `web.stats.series.required` / `web.stats.remain.note` / `web.stats.hint.remain` を `lang/ja.py` と `lang/en.py` に 追加。
 - **バージョン 更新 (v1.14.5)**: `settings.APP_VERSION` を `1.14.4` → `1.14.5` に 変更。
 
+### v1.14.6 — 起動時 の NAS スキャン を 復活 (DB 退避 後 / 2 日目 に 転送 が 始まら ない 不具合)
+
+- **起動時 NAS スキャン の 復活 (v1.14.6)**: Web UI の 開始 経路 (`ui_web/main.py::_run_sync()`) に NAS スキャン 工程 が 無 く 、 スキャン を 呼ぶ の は CLI 版 `app.py` のみ でし た 。 この ため 進捗 リセット (DB 退避) 直後 や 2 日目 の 稼働 で は `files` が 空 の まま 転送 対象 0 件 と なり 、 「バックアップ 完了 / 未送信 は あり ませ ん」 で 即 終了 し て 転送 が 始まり ませ んで し た (`Scanner().scan()` を 開始 時 に 毎回 実行)。
+- **SCAN フェーズ の 可視化 (v1.14.6)**: スキャン 中 は ホーム 画面 の フェーズ を 「NAS スキャン中」 に 切り替え 、 工程 インジケータ の 先頭 に 「NAS スキャン」 (番号 なし) を 追加 し まし た (新 i18n キー `scan.stopped` / `web.step.scan` / `web.phase.scan`)。
+- **スキャナ の 堅牢化 (v1.14.6)**: `PHOTO_DIR` を import 時 コピー で なく 設定 から 毎回 解決 し 、 未設定 / 不在 なら 明確 に 失敗 さ せ ます (`scan.err.invalid_root`)。 停止 要求 (`control.stop_now_requested()`) を 走査 ループ で 確認 し 、 中断 でき る よう に し まし た 。
+- **バージョン 更新 (v1.14.6)**: `settings.APP_VERSION` を `1.14.5` → `1.14.6` に 変更。
+
 ### v1.14.4 — 実行 終了 時 の NameError を 修正 (フェーズ サマリ の tr 未 import)
 
 - **フェーズ サマリ 表示 の `NameError` を 修正 (v1.14.4)**: `core/util.py::print_phase_summary()` が 見出し 文言 に `tr()` を 使っ て い る の に `tr` を import し て い なかっ た ため 、 Web UI から 開始 した 実行 は 転送 完了 後 の サマリ 表示 で 必ず `NameError: name 'tr' is not defined` に なり 、 転送 自体 が 正常 に 終わっ て い て も 実行 全体 が ERROR 扱い に なっ て い まし た (転送 対象 0 件 で 取り残し 復旧 のみ の 実行 で は 「成功 0 / スキップ 0 / 失敗 0」 の まま エラー 表示)。 `core/util.py` に `from nas2gp.core.i18n import tr` を 追加 し まし た (i18n は util を 参照 し ない ため 循環 参照 に は なり ま せ ん)。 v1.8.0 の パッケージ 再編 以降 に 潜在 し て い た もの で 、 v1.14.3 の 変更 と は 無関係 です 。

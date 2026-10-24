@@ -75,13 +75,17 @@ const PHASE_LABEL = {
   GC:t('web.phase.gc'), DELETE:t('web.phase.delete'),
   RECOVER:t('web.phase.recover'), SYNC:t('web.phase.sync'),
   CAPACITY:t('web.phase.capacity'), GP_STOP:t('web.phase.gp_stop'),
+  SCAN:t('web.phase.scan'),
   MEDIA_SCAN:t('web.phase.media_scan'), GP_START:t('web.phase.gp_start'),
   ADB_RECONNECT:t('web.phase.adb_reconnect'), BATTERY_WAIT:t('web.phase.battery_wait'),
   TEMP_WAIT:t('web.phase.temp_wait')
 };
 // バッチ 内 の 工程 一覧 (番号 は flow.py の phase_no と 一致 させる こと)
 // List of in-batch steps (numbers must match phase_no in flow.py)
+// no:0 は バッチ 前 の NAS スキャン 工程 (phase_no を 出さ ない ため 0 の まま 先頭 が 点灯 する)。
+// no:0 is the pre-batch NAS scan step (it publishes no phase_no, so the leading item stays lit).
 const BATCH_STEPS = [
+  {no:0, label:t('web.step.scan')},
   {no:1, label:t('web.step.capacity')},
   {no:2, label:t('web.step.gp_stop')},
   {no:3, label:t('web.step.upload')},
@@ -104,7 +108,10 @@ function renderSteps(snap, running){
     let cls = 'step pending';
     if (_indStep > 0 && s.no < _indStep) cls = 'step done';
     else if (s.no === _indStep) cls = 'step active';
-    return `<div class="${cls}"><span class="step-dot"></span><span class="step-label">${s.no}. ${esc(s.label)}</span></div>`;
+    // no:0 (NAS スキャン) は 番号 を 付け ず 、 他 は 「番号. ラベル」 で 表示 する 。
+    // no:0 (NAS scan) has no number; the rest show "number. label".
+    const n = s.no ? (s.no + '. ') : '';
+    return `<div class="${cls}"><span class="step-dot"></span><span class="step-label">${n}${esc(s.label)}</span></div>`;
   }).join('');
 }
 function _parseTs(s){
