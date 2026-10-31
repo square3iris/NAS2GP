@@ -1,13 +1,21 @@
 # NAS2GP
+Pixelを使った無制限Googleフォトアップロードツールです。
+NASや外付けHDDに保存した写真・動画を、ADB経由で初代Pixel（または無制限対応端末）へ自動転送し、
+Google Photosのバックアップ完了を確認してから端末側のファイルを削除します。
+「pixel 無制限アップロード ツール」「NASからPixelへ転送」「Googleフォト無制限 活用」などで探している人向け。
 
-NAS（ネットワークストレージ）に保存した写真・動画を、ADB 経由で Android 端末へ転送し、
-**Google Photos のバックアップ完了を確認してから**端末側のファイルを削除する自動同期ツールです。
-Windows を主対象とし、macOS / Linux でもベストエフォートで動作します（実機 macOS では未検証）。操作は Web UI（ブラウザ）に一本化しています。
+A tool for unlimited Google Photos uploads using a Pixel device.
 
-NAS → Android device photo/video sync tool for Windows, with best-effort macOS / Linux support (unverified on real macOS hardware).
-It pushes files over ADB, waits until **Google Photos has finished backing them up**,
-and only then deletes them on the device. All operation is done through a browser-based Web UI.
+It automatically transfers photos and videos stored on a NAS or external HDD to a first-generation Pixel (or another device eligible for unlimited uploads) via ADB, then deletes the files from the Pixel only after confirming that Google Photos backup has been completed successfully.
 
+Designed for users searching for:
+
+Unlimited Google Photos upload tool for Pixel
+Transfer photos from NAS to Pixel
+How to take advantage of unlimited Google Photos storage
+
+
+https://qiita.com/square3iris/items/a5b55a24f4d0da7e0cb2
 ---
 
 ## 日本語
