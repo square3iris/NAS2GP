@@ -170,7 +170,7 @@ python source/scripts/build_app.py   # -> archive/<os>/NAS2GP_v<version>_<os>.zi
 
 `packaging/NAS2GP.spec` を使って onedir 形式でビルドし、ZIP にまとめます。ZIP を GitHub Releases に添付して配布します。Linux もベストエフォートでビルドできます（未検証）。
 
-macOS 版は PyInstaller がクロスコンパイル非対応のため Windows からは生成できません。`.github/workflows/build-macos.yml` が GitHub Actions の macOS ランナー上で `archive/mac/` に arm64 / x86_64 の ZIP を作成します（Actions から手動実行、または `v*` タグの push で自動実行し Release に添付）。
+macOS 版は PyInstaller がクロスコンパイル非対応のため Windows からは生成できません。`.github/workflows/build-macos.yml` が GitHub Actions の macOS ランナー上で `archive/mac/` に arm64（Apple Silicon）の ZIP を作成します（Actions から手動実行、または `v*` タグの push で自動実行し Release に添付）。Intel 版は GitHub の Intel macOS ランナー（macos-13）廃止のため現在未対応です。
 
 ### 注意事項（必ずお読みください）
 
@@ -351,7 +351,7 @@ python source/scripts/build_app.py   # -> archive/<os>/NAS2GP_v<version>_<os>.zi
 
 It builds in onedir format using `packaging/NAS2GP.spec` and packs the result into a ZIP, which is attached to GitHub Releases. Linux is best-effort (unverified).
 
-The macOS build cannot be produced on Windows because PyInstaller does not cross-compile. `.github/workflows/build-macos.yml` builds the arm64 / x86_64 ZIPs under `archive/mac/` on GitHub-hosted macOS runners (run it manually from the Actions tab, or push a `v*` tag to build and attach them to the Release).
+The macOS build cannot be produced on Windows because PyInstaller does not cross-compile. `.github/workflows/build-macos.yml` builds the arm64 (Apple Silicon) ZIP under `archive/mac/` on GitHub-hosted macOS runners (run it manually from the Actions tab, or push a `v*` tag to build and attach it to the Release). The Intel build is currently unsupported because GitHub's Intel macOS runner (macos-13) has been retired.
 
 ### Notes (please read first)
 

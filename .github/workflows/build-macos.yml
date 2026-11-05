@@ -15,7 +15,14 @@
 #
 # 成果物 / Artifacts:
 #   archive/mac/NAS2GP_v<version>_macos-arm64.zip    (Apple Silicon)
-#   archive/mac/NAS2GP_v<version>_macos-x86_64.zip   (Intel)
+#
+# 注 / Note:
+#   Intel (x86_64) 版 は GitHub の macos-13 ランナー が 廃止 さ れ 割り当て られ ない ため
+#   現在 は 未対応 (job が queued のまま 止まる)。 Intel 版 が 必要 な 場合 は 、
+#   利用可能な Intel macOS ランナー が 戻っ た 時点 で matrix に 追加 する か 、
+#   universal2 ビルド を 検討 する 。
+#   The Intel (x86_64) build is currently unsupported because GitHub's macos-13
+#   runner is retired and never gets assigned (the job stays queued forever).
 # ============================================
 
 name: Build macOS app
@@ -38,11 +45,9 @@ jobs:
       matrix:
         include:
           # Apple Silicon (arm64)。 macos-latest は arm64 ランナー。
+          # (Intel 用 の macos-13 は 廃止 済み の ため 含め ない 。)
           - runner: macos-latest
             arch: arm64
-          # Intel (x86_64)。 将来 ランナー が 廃止 さ れ た 場合 は この 2 行 を 削除。
-          - runner: macos-13
-            arch: x86_64
     steps:
       - uses: actions/checkout@v4
 
