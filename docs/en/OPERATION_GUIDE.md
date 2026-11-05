@@ -126,6 +126,18 @@ Then configure on the **Settings** page:
 
 ## 3. How to Launch (Web / CLI)
 
+### Packaged app (Windows, recommended)
+
+Download `NAS2GP_v<version>_win64.zip` from [GitHub Releases](https://github.com/square3iris/NAS2GP/releases), extract it to any folder and double-click `NAS2GP.exe`. No Python installation is required.
+
+- It starts a local web server and opens the browser in **app mode** (Edge / Chrome `--app`) automatically.
+- `config/`, `database/` and `logs/` are created next to the exe on first launch (extract it to a writable location).
+- Press **Ctrl+C in the console** to stop. Closing the browser window does not stop the server.
+- To start without opening a browser, set the environment variable `NAS2GP_NO_BROWSER=1`.
+- ADB is not bundled. When `adb` is missing, install guidance is printed to the console.
+
+### Launching from source (Web / CLI)
+
 Run with the **`source` folder** as the current directory.
 
 ```powershell

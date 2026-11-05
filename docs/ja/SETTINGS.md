@@ -97,7 +97,7 @@ NAS2GP/ (リポジトリルート)
 | キー | 型 | 既定 | 内容 |
 |---|---|---|---|
 | `LANGUAGE` | select | `auto` | UI / ログの表示言語。`ja` / `en` / `auto` (OS 追従) / `source/config/lang/*` の外部言語 |
-| `PHOTO_DIR` | text | `D:/Photos` | 転送元ルート (NAS / SMB / ローカル可)。自分の環境の写真フォルダに変更してください |
+| `PHOTO_DIR` | text | `D:/Photos` | 転送元ルート (NAS / SMB / ローカル可)。自分の環境の写真フォルダに変更してください。設定画面の「📁 参照...」ボタンでネイティブのフォルダ選択ダイアログを開けます (ダイアログはサーバ PC 側に表示) |
 | `DEVICE_WORK_DIR` | text | `/sdcard/DCIM/NAS2GP` | 端末側の作業フォルダ (転送先 兼 削除対象)。**DCIM 配下のみ**許可。DCIM 配下は Google Photos の自動バックアップ対象。端末ページからも変更可 |
 
 ### 3.2 ① 容量確保 と バッチ分割 (CAPACITY)

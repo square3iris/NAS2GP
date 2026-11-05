@@ -40,7 +40,7 @@ Phase 10 IoT multi-device        undecided
 With Web UI unification complete, this phase strengthens distribution and operation.
 
 ### 3.1 Highest priority
-- [ ] **Single-file distribution (PyInstaller)**: build `entry_web.py` into an `.exe`. Auto-create `config/` and `database/` on first launch. Include fastapi / uvicorn / jinja2 hidden imports, an icon, and either bundle or auto-download `adb.exe`.
+- [x] **Distribution app (PyInstaller / onedir)**: build `launcher.py` into `NAS2GP.exe`. Auto-create `config/`, `database/` and `logs/` next to the exe on first launch and open the browser in app mode (Edge / Chrome `--app`). Bundle fastapi / uvicorn / jinja2 hidden imports and the Web UI templates. Build with `source/scripts/build_app.py` -> `archive/NAS2GP_v<version>_win64.zip`. ADB is not bundled; install guidance is printed when it is missing. Note: the exe has not been built or launched on real hardware yet.
 - [ ] **Update checker**: on startup, check the latest tag on GitHub Releases (or a NAS) and show an inline notice in the Web UI. No forced auto-update.
 
 ### 3.2 High priority

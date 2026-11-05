@@ -114,7 +114,23 @@ async function loadEditor(){
         item.appendChild(lb);
         const inp = _makeCfgInput(it, vals[it.key]);
         byKey[it.key] = inp;
-        item.appendChild(inp);
+        // v2.0.0: browse:"dir" の 項目 は ネイティブ の フォルダ 選択 ボタン を 添える 。
+        //   v2.0.0: items with browse:"dir" get a native folder-picker button.
+        if (it.browse === 'dir'){
+          const row = document.createElement('div');
+          row.style.display='flex'; row.style.gap='6px'; row.style.alignItems='stretch';
+          inp.style.flex='1 1 auto'; inp.style.minWidth='0';
+          const btn = document.createElement('button');
+          btn.type='button'; btn.className='ghost';
+          btn.textContent = t('web.settings.browse');
+          btn.style.whiteSpace='nowrap'; btn.style.flex='0 0 auto';
+          btn.dataset.browseBtn = '1';
+          btn.onclick = ()=> pickDirFor(inp, btn);
+          row.appendChild(inp); row.appendChild(btn);
+          item.appendChild(row);
+        } else {
+          item.appendChild(inp);
+        }
         const tip = it.desc || it.tooltip;
         if (tip){
           const dd = document.createElement('div');
@@ -178,6 +194,25 @@ async function saveEditor(){
       setTimeout(()=>location.reload(), 900);
     }
   } catch(e){ console.warn(e); document.getElementById('cfg-msg').textContent = t('web.settings.save_fail') + ': ' + e; }
+}
+// v2.0.0: サーバ PC の ネイティブ ダイアログ で フォルダ を 選び 、 入力欄 へ 反映 する 。
+// v2.0.0: pick a folder via the server PC's native dialog and fill the input.
+async function pickDirFor(inp, btn){
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = t('web.settings.browse_wait');
+  try {
+    const r = await fetch('/api/pick_directory', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ initial: inp.value || '' })
+    });
+    const j = await r.json();
+    if (j && j.ok && j.path){ inp.value = j.path; }
+    else if (j && j.error){ document.getElementById('cfg-msg').textContent = t('web.settings.browse_fail') + ': ' + j.error; }
+  } catch(e){
+    document.getElementById('cfg-msg').textContent = t('web.settings.browse_fail') + ': ' + e;
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
 }
 // v1.10.0: 利用 同意 の 状態 表示 と リセット (リセット する と 次回 ページ 表示 で 再確認)。
 // v1.10.0: show the consent state and reset it (resetting re-asks on the next page load).

@@ -1,13 +1,26 @@
 # 変更履歴 (Changelog) — 要約版
 
-最終更新: 2026-10-24
+最終更新: 2026-11-05
 
 形式: Keep a Changelog / バージョニング: セマンティック バージョニング。
 本ファイルは各バージョンの要点のみを残した **要約版** です (撤去済みデスクトップ GUI 時代の長文履歴は圧縮済み)。
 
 ---
 
-## 2026-08 〜 2026-10 — Web UI 一本化期 (v1.7.x / 現行)
+## v2.0.0 — 2026-11 — 配布アプリ (Windows) 追加
+
+- **配布アプリ化 (Windows)**: `source/launcher.py` を追加し、PyInstaller (onedir) で `NAS2GP.exe` として配布可能に。ダブルクリックでローカル Web サーバを起動し、ブラウザをアプリモード (Edge / Chrome `--app`) で開く。Python のインストールは不要。
+- **データフォルダの固定**: exe の隣に `config/` `database/` `logs/` を初回起動時に自動生成 (frozen 時に `WORK_ROOT` が一時展開先 `_MEIPASS` を指す問題に対処)。
+- **ADB は同梱しない**: 未検出時はコンソールに Android Platform Tools の導入手順 (PATH 設定) を表示。
+- **ビルドスクリプト**: `source/scripts/build_app.py` でビルド → `archive/NAS2GP_v2.0.0_win64.zip` を作成。`packaging/NAS2GP.spec` (uvicorn の hidden import・Web UI テンプレート同梱) を使用。
+- **依存**: `requirements.txt` を `uvicorn[standard]` → `uvicorn` に変更し、`pyinstaller` を追加。
+- **設定 の フォルダ 選択 (v2.0.0)**: 設定 画面 の `PHOTO_DIR` に 「📁 参照...」 ボタン を 追加 し 、 ネイティブ の フォルダ 選択 ダイアログ (Windows: PowerShell / macOS: osascript / Linux: zenity・kdialog) で パス を 選べる よう に し まし た (ダイアログ は サーバ PC 側 に 表示)。 新 API `POST /api/pick_directory`。
+- **バージョン 更新**: `settings.APP_VERSION` を `1.14.6` → `2.0.0` に 変更。
+- 注: exe の実機ビルド・起動検証は未実施。
+
+---
+
+## 2026-08 〜 2026-10 — Web UI 一本化期 (v1.7.x 〜 v1.14.x)
 
 - **デスクトップ GUI (PySide6) を完全撤去し、Web UI に一本化**。`entry_web.py` が標準エントリ。
 - Web UI は **7 ページ構成** (ホーム / コンソール / 設定 / 端末 / 管理 / 統計 / 診断) を共通 `base.html` で統一。

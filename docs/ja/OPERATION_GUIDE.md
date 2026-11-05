@@ -126,6 +126,18 @@ python entry_web.py
 
 ## 3. 起動方法 (Web / CLI)
 
+### 配布版アプリ (Windows・推奨)
+
+[GitHub Releases](https://github.com/square3iris/NAS2GP/releases) から `NAS2GP_v<version>_win64.zip` を取得し、任意のフォルダへ展開して `NAS2GP.exe` をダブルクリックします。Python の導入は不要です。
+
+- 起動するとローカル Web サーバが立ち上がり、ブラウザが **アプリモード** (Edge / Chrome の `--app`) で自動的に開きます。
+- `config/` `database/` `logs/` は exe と同じフォルダに初回起動時に自動生成されます (展開先は書き込み可能な場所にしてください)。
+- 停止は **コンソールで Ctrl+C**。ブラウザのウィンドウを閉じてもサーバは止まりません。
+- ブラウザを自動で開かない場合は環境変数 `NAS2GP_NO_BROWSER=1` を設定して起動します。
+- ADB は同梱されていません。`adb` が見つからない場合は導入手順がコンソールに表示されます。
+
+### ソースからの起動 (Web / CLI)
+
 いずれも **`source` フォルダ** をカレントディレクトリにして実行します。
 
 ```powershell

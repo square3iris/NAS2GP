@@ -563,10 +563,13 @@ def _settings_ui_schema() -> List[Dict[str, Any]]:
     ラベル / ツールチップ は core.i18n の tr() を 再利用 し GUI と 文言 を 共通化 する。
     type: bool / int / float / gb / select / text
       - gb: 内部 は バイト 値 だが 画面 は GB 単位 で 編集 する (MAX_BYTES_PER_BATCH 等)
+      - browse: "dir" を 指定 する と text 項目 に 「参照」 (ネイティブ フォルダ 選択) ボタン を 表示
+        (v2.0.0、 パス は サーバ PC 上 で 選択 さ れる)
 
     Display metadata for the Web settings screen (equivalent to the GUI SettingsTab).
     Labels / tooltips reuse core.i18n tr(). type: bool / int / float / gb / select / text
     (gb: stored as bytes but edited in GB, e.g. MAX_BYTES_PER_BATCH).
+    (browse: "dir" shows a native "Browse" button on a text item; v2.0.0, chosen on the server PC.)
     """
     from nas2gp.core.i18n import tr, list_available_languages
 
@@ -588,7 +591,7 @@ def _settings_ui_schema() -> List[Dict[str, Any]]:
             {"key": "LANGUAGE", "label": tr("settings.label.lang"), "type": "select",
              "choices": lang_choices, "desc": tr("settings.tooltip.lang")},
             {"key": "PHOTO_DIR", "label": tr("settings.label.photo_dir"), "type": "text",
-             "desc": tr("settings.tooltip.photo_dir")},
+             "browse": "dir", "desc": tr("settings.tooltip.photo_dir")},
             {"key": "DEVICE_WORK_DIR", "label": tr("settings.label.work_dir"), "type": "text",
              "desc": tr("settings.tooltip.work_dir")},
         ]},
@@ -1187,6 +1190,26 @@ def create_app() -> FastAPI:
             return {"ok": True, "path": str(path)}
         except Exception as e:
             return {"ok": False, "path": str(path or ""), "error": f"{type(e).__name__}: {e}"}
+
+    @app.post("/api/pick_directory")
+    def api_pick_directory(payload: Optional[Dict[str, Any]] = None):
+        """v2.0.0: サーバ PC 上 で ネイティブ の フォルダ 選択 ダイアログ を 開き 、
+        選択 さ れ た パス を 返す (設定 画面 の 「参照」 ボタン 用)。
+        同期 def に より FastAPI の スレッドプール で 実行 し 、 ダイアログ 表示 中 も
+        SSE / 他 API を 塞が ない 。
+
+        v2.0.0: Opens a native folder picker on the server PC and returns the chosen
+        path (used by the "Browse" button on the settings screen). A sync def runs in
+        the thread pool so the dialog does not block SSE/other APIs."""
+        initial = str((payload or {}).get("initial") or "").strip()
+        try:
+            from nas2gp.core.util import pick_directory
+            path = pick_directory(initial)
+            if not path:
+                return {"ok": False, "canceled": True, "path": ""}
+            return {"ok": True, "canceled": False, "path": path}
+        except Exception as e:
+            return {"ok": False, "canceled": False, "path": "", "error": f"{type(e).__name__}: {e}"}
 
     # ------------------------------------------------------------
     # v1.7.15: 管理 (メンテナンス) API - GUI 管理 タブ 相当

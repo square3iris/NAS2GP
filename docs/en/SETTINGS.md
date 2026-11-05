@@ -97,7 +97,7 @@ shows "what changes when you edit it". The groups below are listed in pipeline o
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `LANGUAGE` | select | `auto` | UI / log language. `ja` / `en` / `auto` (follow OS) / an external language in `source/config/lang/*` |
-| `PHOTO_DIR` | text | `D:/Photos` | Source root (NAS / SMB / local). Change it to your own photo folder |
+| `PHOTO_DIR` | text | `D:/Photos` | Source root (NAS / SMB / local). Change it to your own photo folder. The "📁 Browse..." button on the settings screen opens a native folder picker (the dialog appears on the server PC) |
 | `DEVICE_WORK_DIR` | text | `/sdcard/DCIM/NAS2GP` | Device-side working folder (transfer + delete target). **DCIM-only**; folders under DCIM are auto-backed up by Google Photos. Also changeable from the device page |
 
 ### 3.2 (1) Capacity and batch split (CAPACITY)

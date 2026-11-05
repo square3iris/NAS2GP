@@ -97,18 +97,28 @@ Google Photos の無制限アップロードの条件は Google のポリシー�
 
 ### インストール
 
+**配布版アプリ（推奨・Windows）**
+
+[GitHub Releases](https://github.com/square3iris/NAS2GP/releases) から `NAS2GP_v<version>_win64.zip` をダウンロードし、任意のフォルダへ展開して `NAS2GP.exe` をダブルクリックします。**Python のインストールは不要**です。初回起動時に `config/` `database/` `logs/` が exe と同じフォルダに自動生成されます。
+
+**ソースから実行する場合**
+
 ```powershell
 python --version          # 3.11 / 3.12
-pip install fastapi "uvicorn[standard]" jinja2
+pip install -r requirements.txt
 ```
 
-ADB（Android Platform Tools）を導入し、`adb` に PATH を通してください。
+いずれの場合も ADB（Android Platform Tools）を導入し、`adb` に PATH を通してください。**ADB は同梱されていません**（未検出時はアプリ起動時に導入手順を表示します）。
 
 ### 起動方法
 
-`source` フォルダをカレントディレクトリにして実行します。
+**配布版アプリ（Windows）**
 
-**Windows**
+`NAS2GP.exe` をダブルクリックすると、ローカル Web サーバが起動し、既定ブラウザが **アプリモード**（Edge / Chrome の `--app`）で開きます。ウィンドウを閉じるのではなく、**コンソールで Ctrl+C** を押すと停止します。サーバのみ起動してブラウザを開かない場合は、環境変数 `NAS2GP_NO_BROWSER=1` を設定してください。
+
+**ソースから実行する場合**
+
+`source` フォルダをカレントディレクトリにして実行します。
 
 ```powershell
 cd source
@@ -138,15 +148,27 @@ NAS2GP/
 ├ .gitattributes    改行コードの固定 (v1.9.0)
 ├ requirements.txt  依存パッケージ定義 (v1.9.0)
 ├ docs/        ja / en のドキュメント
-├ archive/     リリース版のスナップショット
+├ archive/     リリース版のスナップショット (最新 1 つのみ)
+├ packaging/   配布アプリの PyInstaller spec (NAS2GP.spec)
 └ source/      実行エントリ・本体パッケージ・実行時データ
+    ├ launcher.py        配布アプリの起動エントリ (Web サーバ + ブラウザ起動)
     ├ entry_web.py / app.py / db_admin.py
     ├ nas2gp/   本体パッケージ
+    ├ scripts/  ビルドスクリプト (build_app.py / build_release.py)
     ├ bin/      起動用 .cmd / .sh / .command
     ├ config/   設定ファイル + config/lang/ 外部言語 JSON（個人環境。Git 管理外）
     ├ database/ 転送履歴データベース（Git 管理外）
     └ logs/     実行ログ（Git 管理外）
 ```
+
+### 配布アプリのビルド（開発者向け）
+
+```powershell
+pip install -r requirements.txt      # pyinstaller を含む
+python source/scripts/build_app.py   # -> archive/NAS2GP_v<version>_win64.zip
+```
+
+`packaging/NAS2GP.spec` を使って onedir 形式でビルドし、ZIP にまとめます。ZIP を GitHub Releases に添付して配布します。macOS / Linux もベストエフォートでビルドできます（未検証）。
 
 ### 注意事項（必ずお読みください）
 
@@ -254,18 +276,28 @@ Beyond Japanese / English, you can **add any language by dropping in a single JS
 
 ### Install
 
+**Packaged app (recommended, Windows)**
+
+Download `NAS2GP_v<version>_win64.zip` from [GitHub Releases](https://github.com/square3iris/NAS2GP/releases), extract it to any folder and double-click `NAS2GP.exe`. **No Python installation is required.** On first launch, `config/`, `database/` and `logs/` are created next to the exe.
+
+**Running from source**
+
 ```powershell
 python --version          # 3.11 / 3.12
-pip install fastapi "uvicorn[standard]" jinja2
+pip install -r requirements.txt
 ```
 
-Install ADB (Android Platform Tools) and make sure `adb` is on your PATH.
+In both cases, install ADB (Android Platform Tools) and make sure `adb` is on your PATH. **ADB is not bundled** (if it is missing, the app prints install guidance on startup).
 
 ### Run
 
-Make the `source` folder the current directory and launch:
+**Packaged app (Windows)**
 
-**Windows**
+Double-clicking `NAS2GP.exe` starts the local web server and opens the default browser in **app mode** (Edge / Chrome `--app`). Do not close the window — press **Ctrl+C in the console** to stop. To start the server without opening a browser, set the environment variable `NAS2GP_NO_BROWSER=1`.
+
+**Running from source**
+
+Make the `source` folder the current directory and launch:
 
 ```powershell
 cd source
@@ -295,15 +327,27 @@ NAS2GP/
 ├ .gitattributes    line-ending policy (v1.9.0)
 ├ requirements.txt  runtime / test dependencies (v1.9.0)
 ├ docs/        ja / en documentation
-├ archive/     release snapshots (one zip per version)
+├ archive/     release snapshots (only the latest zip is kept)
+├ packaging/   PyInstaller spec for the distribution app (NAS2GP.spec)
 └ source/      entry points, main package and runtime data
+    ├ launcher.py       entry point of the packaged app (web server + browser)
     ├ entry_web.py / app.py / db_admin.py
     ├ nas2gp/   main package
+    ├ scripts/  build scripts (build_app.py / build_release.py)
     ├ bin/      launcher .cmd / .sh / .command files
     ├ config/   settings + config/lang/ external language JSON (per-environment; not committed)
     ├ database/ transfer history database (not committed)
     └ logs/     runtime logs (not committed)
 ```
+
+### Building the distribution app (for developers)
+
+```powershell
+pip install -r requirements.txt      # includes pyinstaller
+python source/scripts/build_app.py   # -> archive/NAS2GP_v<version>_win64.zip
+```
+
+It builds in onedir format using `packaging/NAS2GP.spec` and packs the result into a ZIP, which is attached to GitHub Releases. macOS / Linux are best-effort (unverified).
 
 ### Notes (please read first)
 

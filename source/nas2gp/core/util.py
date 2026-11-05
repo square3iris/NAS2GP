@@ -98,6 +98,115 @@ def open_in_file_manager(path) -> bool:
 
 
 # ============================================
+# OS 連携: ネイティブのフォルダ選択ダイアログ
+# OS integration: native folder picker dialog
+# ============================================
+
+def _pick_directory_windows(initial):
+    """Windows: PowerShell + Windows.Forms.FolderBrowserDialog。
+    リダイレクト 出力 が 日本語 パス で 化け ない よう UTF-8 で 受け取る 。
+    Windows: PowerShell + FolderBrowserDialog, read back as UTF-8 so non-ASCII
+    paths survive redirection."""
+    def _esc(s):
+        return s.replace("'", "''")
+
+    ps = ["[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;",
+          "Add-Type -AssemblyName System.Windows.Forms | Out-Null;",
+          "[System.Windows.Forms.Application]::EnableVisualStyles() | Out-Null;",
+          "$d = New-Object System.Windows.Forms.FolderBrowserDialog;",
+          "$d.Description = 'Select folder';",
+          "$d.ShowNewFolderButton = $true;"]
+    if initial:
+        ps.append(f"try {{ $d.SelectedPath = '{_esc(initial)}' }} catch {{}};")
+    ps.append("if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) "
+              "{ [Console]::Out.Write($d.SelectedPath) }")
+    command = " ".join(ps)
+
+    for exe in ("powershell", "pwsh"):
+        path = shutil.which(exe)
+        if not path:
+            continue
+        try:
+            proc = subprocess.run(
+                [path, "-NoProfile", "-STA", "-Command", command],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+        except Exception:
+            continue
+        return (proc.stdout or "").strip() or None
+    return None
+
+
+def _pick_directory_macos(initial):
+    """macOS: osascript の choose folder。"""
+    prompt = "Select folder"
+    if initial and os.path.isdir(initial):
+        esc = initial.replace("\\", "\\\\").replace('"', '\\"')
+        script = (f'set p to (POSIX file "{esc}") as alias\n'
+                  f'POSIX path of (choose folder with prompt "{prompt}" default location p)')
+    else:
+        script = f'POSIX path of (choose folder with prompt "{prompt}")'
+    try:
+        proc = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+    except Exception:
+        return None
+    return (proc.stdout or "").strip() or None
+
+
+def _pick_directory_linux(initial):
+    """Linux: zenity (GNOME) → kdialog (KDE) の順に試す。"""
+    zenity = shutil.which("zenity")
+    if zenity:
+        args = [zenity, "--file-selection", "--directory", "--title=Select folder"]
+        if initial and os.path.isdir(initial):
+            args.append(f"--filename={initial.rstrip('/')}/")
+        try:
+            proc = subprocess.run(args, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace")
+        except Exception:
+            proc = None
+        if proc is not None:
+            return (proc.stdout or "").strip() or None
+
+    kdialog = shutil.which("kdialog")
+    if kdialog:
+        try:
+            proc = subprocess.run(
+                [kdialog, "--getexistingdirectory", initial or os.path.expanduser("~")],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+        except Exception:
+            return None
+        return (proc.stdout or "").strip() or None
+    return None
+
+
+def pick_directory(initial=None):
+    """
+    ネイティブ の フォルダ 選択 ダイアログ を 開き 、 選択 さ れ た パス を 返す 。
+    キャンセル / 未対応 環境 で は None を 返す 。
+    tkinter を 使わ ない ため 、 frozen (PyInstaller) 配布 でも 動作 する 。
+    ダイアログ は サーバ (実行 PC) の 画面 に 表示 さ れる 。
+
+    Open a native folder picker and return the chosen path, or None when
+    cancelled / unsupported. Uses OS commands (not tkinter), so it also works
+    in a frozen (PyInstaller) build. The dialog appears on the server PC.
+    """
+    start = str(initial or "").strip()
+    try:
+        if sys.platform.startswith("win"):
+            return _pick_directory_windows(start)
+        if sys.platform == "darwin":
+            return _pick_directory_macos(start)
+        return _pick_directory_linux(start)
+    except Exception:
+        return None
+
+
+# ============================================
 # ファイル情報ヘルパー
 # File info helpers
 # ============================================

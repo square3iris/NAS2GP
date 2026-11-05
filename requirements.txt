@@ -1,7 +1,10 @@
 # NAS2GP - 実行時 依存 / runtime dependencies
 fastapi
-uvicorn[standard]
+uvicorn
 jinja2
+
+# 配布物 (exe) ビルド 用 / for building the distribution app (PyInstaller)
+pyinstaller
 
 # テスト 用 / for tests
 pytest

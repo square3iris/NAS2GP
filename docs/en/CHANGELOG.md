@@ -1,6 +1,6 @@
 # Changelog — Summary
 
-Last updated: 2026-10-24
+Last updated: 2026-11-05
 
 Format: Keep a Changelog / Versioning: Semantic Versioning.
 This file is a **summary** keeping only the highlights of each version (the long history from the
@@ -8,7 +8,20 @@ removed desktop-GUI era is compressed).
 
 ---
 
-## 2026-08 to 2026-10 — Web UI Unification (v1.7.x / current)
+## v2.0.0 — 2026-11 — Distribution app (Windows) added
+
+- **Packaged app (Windows)**: added `source/launcher.py` and made it distributable as `NAS2GP.exe` via PyInstaller (onedir). Double-clicking starts the local web server and opens the browser in app mode (Edge / Chrome `--app`). No Python installation is required.
+- **Pinned data folders**: `config/`, `database/` and `logs/` are created next to the exe on first launch (fixes `WORK_ROOT` pointing at the temporary extract dir `_MEIPASS` when frozen).
+- **ADB is not bundled**: when `adb` is missing, install guidance for Android Platform Tools (PATH setup) is printed to the console.
+- **Build script**: `source/scripts/build_app.py` builds and creates `archive/NAS2GP_v2.0.0_win64.zip`, using `packaging/NAS2GP.spec` (uvicorn hidden imports and bundled Web UI templates).
+- **Dependencies**: `requirements.txt` changed `uvicorn[standard]` -> `uvicorn` and added `pyinstaller`.
+- **Folder picker in Settings (v2.0.0)**: added a "📁 Browse..." button to the `PHOTO_DIR` setting; it opens a native folder picker (Windows: PowerShell / macOS: osascript / Linux: zenity or kdialog), shown on the server PC. New API `POST /api/pick_directory`.
+- **Version bump**: `settings.APP_VERSION` changed from `1.14.6` to `2.0.0`.
+- Note: the exe has not been built or launched on real hardware yet.
+
+---
+
+## 2026-08 to 2026-10 — Web UI Unification (v1.7.x to v1.14.x)
 
 - **Fully removed the desktop GUI (PySide6) and unified on the Web UI**. `entry_web.py` is the standard entry point.
 - The Web UI is a **7-page layout** (Home / Console / Settings / device / Management / Stats / Diagnostics) unified under a shared `base.html`.
