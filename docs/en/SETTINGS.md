@@ -20,7 +20,9 @@ NAS2GP/ (repository root)
 ├── requirements.txt       <- runtime / test dependencies (v1.9.0)
 ├── docs/                  <- documentation (ja / en)
 ├── archive/
-│   └── NAS2GP_v1.9.0.zip  <- snapshot of the released version
+│   ├── windows/           <- Windows release snapshots
+│   ├── mac/               <- macOS release snapshots
+│   └── linux/             <- Linux release snapshots
 └── source/                <- entry points, package and runtime data
     ├── app.py / entry_web.py / db_admin.py   <- entry points
     ├── nas2gp/            <- main package

@@ -4,13 +4,15 @@
 #
 # 配布用アプリ (onedir) を PyInstaller で作成し、ZIP にまとめる ビルドスクリプト。
 #   - 生成物: build/app/dist/NAS2GP/ (NAS2GP.exe と _internal/)
-#   - ZIP   : archive/NAS2GP_v<version>_<os>.zip
+#   - ZIP   : archive/<os>/NAS2GP_v<version>_<os>.zip
+#     <os> = windows / mac / linux (OS ごとに 最新 1 つ を 保持)
 #     (Windows のみ検証済み。macOS / Linux はベストエフォート)
 #
 # Build script that creates the distribution app (onedir) with PyInstaller and
 # packs it into a ZIP.
 #   - Output: build/app/dist/NAS2GP/ (NAS2GP.exe and _internal/)
-#   - ZIP   : archive/NAS2GP_v<version>_<os>.zip
+#   - ZIP   : archive/<os>/NAS2GP_v<version>_<os>.zip
+#     <os> = windows / mac / linux (keep the latest one per OS)
 #     (verified on Windows only; macOS / Linux are best-effort)
 #
 # 前提 / Prerequisites:
@@ -61,6 +63,16 @@ def platform_tag() -> str:
     return "linux64"
 
 
+def platform_dir() -> str:
+    """ZIP を 格納 する archive/ 配下 の OS 別 フォルダ 名 を 返す。
+    Return the per-OS sub-folder name under archive/ that holds the ZIP."""
+    if sys.platform.startswith("win"):
+        return "windows"
+    if sys.platform == "darwin":
+        return "mac"
+    return "linux"
+
+
 def main() -> int:
     if not SPEC_FILE.exists():
         raise SystemExit(f"spec ファイル が 見つかり ませ ん : {SPEC_FILE}")
@@ -71,7 +83,8 @@ def main() -> int:
 
     version = read_version()
     tag = platform_tag()
-    print(f"[build_app] version={version} platform={tag}")
+    os_dir = platform_dir()
+    print(f"[build_app] version={version} platform={tag} dir={os_dir}")
     print(f"[build_app] pyinstaller で ビルド 中 ... (数分 かかる 場合 が あり ます)")
 
     cmd = [
@@ -95,8 +108,13 @@ def main() -> int:
     if not app_dir.is_dir():
         raise SystemExit(f"ビルド 成果物 が 見つかり ませ ん : {app_dir}")
 
-    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = ARCHIVE_DIR / f"NAS2GP_v{version}_{tag}.zip"
+    # OS 別 フォルダ (archive/windows/ , archive/mac/ , archive/linux/) に ZIP を 出力 する 。
+    # 古い 版 は 自動 削除 し ない (最新 1 つ を 保持 する 運用 は 手動 / git rm)。
+    # Write the ZIP into the per-OS folder (archive/windows/, archive/mac/, archive/linux/).
+    # Old versions are not removed automatically (keep-latest-1 is a manual / git rm step).
+    archive_dir = ARCHIVE_DIR / os_dir
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    out_path = archive_dir / f"NAS2GP_v{version}_{tag}.zip"
     root_name = f"NAS2GP_v{version}"
 
     files = sorted(p for p in app_dir.rglob("*") if p.is_file())

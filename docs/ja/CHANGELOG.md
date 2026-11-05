@@ -12,7 +12,8 @@
 - **配布アプリ化 (Windows)**: `source/launcher.py` を追加し、PyInstaller (onedir) で `NAS2GP.exe` として配布可能に。ダブルクリックでローカル Web サーバを起動し、ブラウザをアプリモード (Edge / Chrome `--app`) で開く。Python のインストールは不要。
 - **データフォルダの固定**: exe の隣に `config/` `database/` `logs/` を初回起動時に自動生成 (frozen 時に `WORK_ROOT` が一時展開先 `_MEIPASS` を指す問題に対処)。
 - **ADB は同梱しない**: 未検出時はコンソールに Android Platform Tools の導入手順 (PATH 設定) を表示。
-- **ビルドスクリプト**: `source/scripts/build_app.py` でビルド → `archive/NAS2GP_v2.0.0_win64.zip` を作成。`packaging/NAS2GP.spec` (uvicorn の hidden import・Web UI テンプレート同梱) を使用。
+- **ビルドスクリプト**: `source/scripts/build_app.py` でビルド → `archive/<os>/NAS2GP_v<version>_<os>.zip` (例: `archive/windows/NAS2GP_v2.0.0_win64.zip`) を作成。`packaging/NAS2GP.spec` (uvicorn の hidden import・Web UI テンプレート同梱) を使用。OS 別フォルダ (`windows/` `mac/` `linux/`) に出力します。
+- **macOS ビルド (GitHub Actions)**: `.github/workflows/build-macos.yml` を追加。PyInstaller はクロスコンパイル非対応のため Windows からは生成できず、macOS ランナー上で `archive/mac/` に arm64 / x86_64 の ZIP を作成します (手動実行 or `v*` タグ push で Release に添付)。
 - **依存**: `requirements.txt` を `uvicorn[standard]` → `uvicorn` に変更し、`pyinstaller` を追加。
 - **設定 の フォルダ 選択 (v2.0.0)**: 設定 画面 の `PHOTO_DIR` に 「📁 参照...」 ボタン を 追加 し 、 ネイティブ の フォルダ 選択 ダイアログ (Windows: PowerShell / macOS: osascript / Linux: zenity・kdialog) で パス を 選べる よう に し まし た (ダイアログ は サーバ PC 側 に 表示)。 新 API `POST /api/pick_directory`。
 - **バージョン 更新**: `settings.APP_VERSION` を `1.14.6` → `2.0.0` に 変更。

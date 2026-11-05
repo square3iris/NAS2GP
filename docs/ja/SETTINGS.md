@@ -20,7 +20,9 @@ NAS2GP/ (リポジトリルート)
 ├── requirements.txt       ← 依存パッケージ定義 (v1.9.0)
 ├── docs/                  ← ドキュメント (ja / en)
 ├── archive/
-│   └── NAS2GP_v1.9.0.zip  ← リリース版スナップショット
+│   ├── windows/           ← Windows 版スナップショット
+│   ├── mac/               ← macOS 版スナップショット
+│   └── linux/             ← Linux 版スナップショット
 └── source/                ← 実行エントリ・パッケージ・実行時データを集約
     ├── app.py / entry_web.py / db_admin.py   ← 実行エントリ
     ├── nas2gp/            ← メインパッケージ

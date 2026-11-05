@@ -1,0 +1,92 @@
+# ============================================
+# FILE: .github/workflows/build-macos.yml
+#
+# macOS 用 バイナリ (NAS2GP) を GitHub Actions の macOS ランナー で ビルド する ワークフロー。
+# PyInstaller は クロスコンパイル に 対応 し て い ない ため 、 Windows の 開発機 から は
+# macOS 版 を 生成 でき ない 。 ここ で archive/mac/ に ZIP を 作成 する 。
+#
+# Build the macOS binary (NAS2GP) on GitHub-hosted macOS runners. PyInstaller
+# cannot cross-compile, so the macOS ZIP cannot be produced from the Windows dev
+# machine; this workflow creates it under archive/mac/.
+#
+# 起動方法 / How to run:
+#   - Actions タブ から 手動実行 (workflow_dispatch)
+#   - タグ (v*) を push する と ビルド し 、 その Release に ZIP を 添付
+#
+# 成果物 / Artifacts:
+#   archive/mac/NAS2GP_v<version>_macos-arm64.zip    (Apple Silicon)
+#   archive/mac/NAS2GP_v<version>_macos-x86_64.zip   (Intel)
+# ============================================
+
+name: Build macOS app
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # タグ push 時 に Release へ 添付 する ため / to attach assets to a Release
+
+jobs:
+  build:
+    name: macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false   # 片方 が 失敗 し て も もう 片方 は 継続 / one arch failing must not block the other
+      matrix:
+        include:
+          # Apple Silicon (arm64)。 macos-latest は arm64 ランナー。
+          - runner: macos-latest
+            arch: arm64
+          # Intel (x86_64)。 将来 ランナー が 廃止 さ れ た 場合 は この 2 行 を 削除。
+          - runner: macos-13
+            arch: x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Read version
+        id: ver
+        run: |
+          V=$(python - <<'PY'
+          import pathlib, re
+          p = pathlib.Path("source/nas2gp/core/settings.py")
+          print(re.search(r'APP_VERSION\s*=\s*"([^"]+)"', p.read_text(encoding="utf-8")).group(1))
+          PY
+          )
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Build app
+        run: python source/scripts/build_app.py
+
+      - name: Tag ZIP with architecture
+        run: |
+          SRC="$(ls archive/mac/*.zip | head -n1)"
+          DEST="archive/mac/NAS2GP_v${{ steps.ver.outputs.version }}_macos-${{ matrix.arch }}.zip"
+          mv "$SRC" "$DEST"
+          ls -l "$DEST"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NAS2GP-macos-${{ matrix.arch }}
+          path: archive/mac/*.zip
+          if-no-files-found: error
+
+      - name: Attach to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes \
+            || true
+          gh release upload "$GITHUB_REF_NAME" archive/mac/*.zip --clobber

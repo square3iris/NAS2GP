@@ -40,7 +40,7 @@ Phase 10 IoT マルチデバイス    未定
 Web UI 一本化の完了により、配布と運用まわりを強化するフェーズです。
 
 ### 3.1 優先度 最高
-- [x] **配布アプリ (PyInstaller / onedir)**: `launcher.py` を `NAS2GP.exe` 化。exe の隣に `config/` `database/` `logs/` を初回起動時に自動生成し、ブラウザをアプリモード (Edge / Chrome `--app`) で起動。fastapi / uvicorn / jinja2 の hidden import と Web UI テンプレートを同梱。ビルドは `source/scripts/build_app.py` → `archive/NAS2GP_v<version>_win64.zip`。ADB は同梱せず、未検出時は導入手順を表示。※ exe の実機ビルド・起動検証は未実施。
+- [x] **配布アプリ (PyInstaller / onedir)**: `launcher.py` を `NAS2GP.exe` 化。exe の隣に `config/` `database/` `logs/` を初回起動時に自動生成し、ブラウザをアプリモード (Edge / Chrome `--app`) で起動。fastapi / uvicorn / jinja2 の hidden import と Web UI テンプレートを同梱。ビルドは `source/scripts/build_app.py` → `archive/<os>/NAS2GP_v<version>_<os>.zip` (例: `archive/windows/NAS2GP_v2.0.0_win64.zip`)。ADB は同梱せず、未検出時は導入手順を表示。※ exe の実機ビルド・起動検証は未実施。
 - [ ] **更新チェッカー**: 起動時に GitHub Releases (または NAS) の最新タグを確認し Web UI にインライン通知。自動強制更新は行わない。
 
 ### 3.2 優先度 高

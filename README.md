@@ -148,7 +148,7 @@ NAS2GP/
 ├ .gitattributes    改行コードの固定 (v1.9.0)
 ├ requirements.txt  依存パッケージ定義 (v1.9.0)
 ├ docs/        ja / en のドキュメント
-├ archive/     リリース版のスナップショット (最新 1 つのみ)
+├ archive/     リリース版のスナップショット (windows/ mac/ linux/ ごとに最新 1 つ)
 ├ packaging/   配布アプリの PyInstaller spec (NAS2GP.spec)
 └ source/      実行エントリ・本体パッケージ・実行時データ
     ├ launcher.py        配布アプリの起動エントリ (Web サーバ + ブラウザ起動)
@@ -165,10 +165,12 @@ NAS2GP/
 
 ```powershell
 pip install -r requirements.txt      # pyinstaller を含む
-python source/scripts/build_app.py   # -> archive/NAS2GP_v<version>_win64.zip
+python source/scripts/build_app.py   # -> archive/<os>/NAS2GP_v<version>_<os>.zip (例: windows/NAS2GP_v2.0.0_win64.zip)
 ```
 
-`packaging/NAS2GP.spec` を使って onedir 形式でビルドし、ZIP にまとめます。ZIP を GitHub Releases に添付して配布します。macOS / Linux もベストエフォートでビルドできます（未検証）。
+`packaging/NAS2GP.spec` を使って onedir 形式でビルドし、ZIP にまとめます。ZIP を GitHub Releases に添付して配布します。Linux もベストエフォートでビルドできます（未検証）。
+
+macOS 版は PyInstaller がクロスコンパイル非対応のため Windows からは生成できません。`.github/workflows/build-macos.yml` が GitHub Actions の macOS ランナー上で `archive/mac/` に arm64 / x86_64 の ZIP を作成します（Actions から手動実行、または `v*` タグの push で自動実行し Release に添付）。
 
 ### 注意事項（必ずお読みください）
 
@@ -327,7 +329,7 @@ NAS2GP/
 ├ .gitattributes    line-ending policy (v1.9.0)
 ├ requirements.txt  runtime / test dependencies (v1.9.0)
 ├ docs/        ja / en documentation
-├ archive/     release snapshots (only the latest zip is kept)
+├ archive/     release snapshots (latest zip per windows/ mac/ linux/)
 ├ packaging/   PyInstaller spec for the distribution app (NAS2GP.spec)
 └ source/      entry points, main package and runtime data
     ├ launcher.py       entry point of the packaged app (web server + browser)
@@ -344,10 +346,12 @@ NAS2GP/
 
 ```powershell
 pip install -r requirements.txt      # includes pyinstaller
-python source/scripts/build_app.py   # -> archive/NAS2GP_v<version>_win64.zip
+python source/scripts/build_app.py   # -> archive/<os>/NAS2GP_v<version>_<os>.zip (例: windows/NAS2GP_v2.0.0_win64.zip)
 ```
 
-It builds in onedir format using `packaging/NAS2GP.spec` and packs the result into a ZIP, which is attached to GitHub Releases. macOS / Linux are best-effort (unverified).
+It builds in onedir format using `packaging/NAS2GP.spec` and packs the result into a ZIP, which is attached to GitHub Releases. Linux is best-effort (unverified).
+
+The macOS build cannot be produced on Windows because PyInstaller does not cross-compile. `.github/workflows/build-macos.yml` builds the arm64 / x86_64 ZIPs under `archive/mac/` on GitHub-hosted macOS runners (run it manually from the Actions tab, or push a `v*` tag to build and attach them to the Release).
 
 ### Notes (please read first)
 
